@@ -1,75 +1,92 @@
 # rucRak Crew Chief — Deployment Guide
 
-This turns the Crew Chief chatbot into a live, standalone site (or an embeddable
-widget) that talks to Claude through your own secured backend — no API key
-ever touches the browser.
+Everything that could be built without your accounts/credentials is done and
+tested. What's left is a short list of steps that genuinely require you —
+they involve your Anthropic billing, your GitHub org, and your Vercel team,
+none of which I can act on for you.
 
-## What's in this folder
+## What's built and verified
 
-- `index.html` — the frontend (the chat UI you already saw). Calls `/api/chat`.
-- `api/chat.js` — a Vercel serverless function. This holds the system prompt
-  and your Anthropic API key (as an environment variable, never in code).
-- `package.json` — minimal project file so Vercel recognizes this as a Node project.
+- `index.html` — the chat UI. Calls `/api/chat`, never touches your API key.
+- `api/chat.js` — the serverless function. Holds the system prompt, calls
+  Anthropic server-side, validates input, **rate-limits by IP**.
+- `api/health.js` — a free diagnostic endpoint to confirm deployment worked.
+- `tests/chat.test.js` — 8 automated tests (validation, error handling,
+  message-history trimming, rate limiting) that run with **zero API cost**
+  because they mock the Anthropic call. **All 8 currently pass.**
+- `vercel.json` — explicit function config (timeouts).
+- `.env.example` — documents the two environment variables you'll need.
+- `.gitignore` — keeps secrets and local files out of version control.
+- A local git repo, already initialized with one commit on branch `main`,
+  containing all of the above — ready for `git push` the moment you point it
+  at a real GitHub remote.
 
-## Step 1 — Get an Anthropic API key (if you don't have one yet)
+## Run the tests yourself (optional, but reassuring)
 
-1. Go to https://console.anthropic.com
-2. Create/sign in to an account, add billing
-3. Go to **API Keys** → **Create Key**
-4. Copy it somewhere safe — you won't be able to see it again after this
+```bash
+npm test
+```
 
-## Step 2 — Push this to GitHub
+You should see `# pass 8` and `# fail 0`. This proves the request handling,
+error responses, and rate limiter all behave correctly — before you've spent
+a single cent calling the real Claude API.
 
-Using your existing `taskrocketai-create` org:
+## What only you can do from here
+
+### 1. Get an Anthropic API key
+Go to https://console.anthropic.com, sign in / create an account, add
+billing, then **API Keys → Create Key**. Copy it somewhere safe.
+
+*(Optional but recommended: set a spending cap in the console so a traffic
+spike can't surprise you with a bill.)*
+
+### 2. Push this to GitHub
+The repo is already built and committed locally. You just need to point it
+at a real remote and push:
 
 ```bash
 cd rucrak-crew-chief
-git init
-git add .
-git commit -m "rucRak Crew Chief chatbot"
 git remote add origin https://github.com/taskrocketai-create/rucrak-crew-chief.git
 git push -u origin main
 ```
 
-(Create the empty repo on GitHub first if it doesn't exist yet.)
+(Create the empty repo on GitHub first if it doesn't exist yet — no README,
+no .gitignore, no license, so it doesn't conflict with what's already here.)
 
-## Step 3 — Deploy to Vercel
+### 3. Import into Vercel
+1. https://vercel.com/new → import the `rucrak-crew-chief` repo
+2. Framework preset: **Other**
+3. **Before deploying**, add environment variables (next step)
 
-1. Go to https://vercel.com/new
-2. Import the `rucrak-crew-chief` repo (should show up under your
-   `taskrocketai-create` org / your existing Vercel team)
-3. Framework preset: **Other** (it's a static HTML + serverless function
-   project, not a framework)
-4. Before clicking Deploy, add the environment variable below
-
-## Step 4 — Set environment variables
-
-In the Vercel project → **Settings → Environment Variables**, add:
+### 4. Set environment variables in Vercel
+Project → **Settings → Environment Variables**:
 
 | Key | Value |
 |---|---|
 | `ANTHROPIC_API_KEY` | your real key from Step 1 |
-| `ALLOWED_ORIGIN` | `https://rucrak.com` (restrict who can call your API — see note below) |
+| `ALLOWED_ORIGIN` | `https://rucrak.com` (or leave as `*` for initial testing) |
 
-Redeploy after adding these (Vercel → Deployments → ⋯ → Redeploy).
+Redeploy after adding these.
 
-## Step 5 — Test it
+### 5. Confirm it's live — for free
+Visit `https://your-project-name.vercel.app/api/health`. You should see:
 
-Visit `https://your-project-name.vercel.app` — the chat should now work
-live, calling your own `/api/chat` function instead of Anthropic directly.
+```json
+{ "status": "ok", "hasApiKey": true, "allowedOrigin": "https://rucrak.com", ... }
+```
 
-## Step 6 — Put it on rucrak.com
+If `hasApiKey` is `false`, the environment variable didn't get set before
+the last deploy — add/fix it and redeploy.
 
-You have two good options:
+### 6. Test the real chat
+Visit `https://your-project-name.vercel.app` and talk to Crew Chief. This is
+the first step that actually spends API credits.
 
-**Option A — Subdomain or path (recommended, simplest)**
-Point `support.rucrak.com` or `rucrak.com/support` at this Vercel deployment
-(Vercel → Settings → Domains → add the domain, then update the DNS record
-your registrar gives you).
+### 7. Put it on rucrak.com
+**Option A — subdomain/path (recommended):** point `support.rucrak.com` or
+`rucrak.com/support` at the Vercel deployment (Vercel → Domains).
 
-**Option B — Embed as a widget on existing pages**
-Drop this on any page on rucrak.com:
-
+**Option B — embed as a widget:**
 ```html
 <iframe
   src="https://your-project-name.vercel.app"
@@ -78,28 +95,29 @@ Drop this on any page on rucrak.com:
 </iframe>
 ```
 
-If you go this route, set `ALLOWED_ORIGIN` to `https://rucrak.com` (Step 4)
-so only pages on your actual site can call the backend.
+## What's already hardened vs. what's still worth doing later
 
-## About `ALLOWED_ORIGIN`
+**Already built in:**
+- API key never exposed to the browser
+- CORS restriction via `ALLOWED_ORIGIN`
+- Per-IP rate limiting (12 messages/minute) — blocks casual abuse/button-mashing
+- Input validation (rejects malformed requests before they reach Anthropic)
+- Conversation history capped at 40 messages server-side (cost/latency guard)
+- Automated tests covering all of the above
 
-This is a basic safeguard so random other websites can't quietly point their
-own frontend at your `/api/chat` endpoint and run up your Anthropic bill on
-your dime. It's not bulletproof (a determined bad actor can spoof headers),
-but it stops casual abuse. For a public-facing production chatbot, you'll
-eventually also want:
+**Worth doing before high-traffic launch (needs your accounts, so not built
+by default):**
+- **Durable rate limiting** — the current limiter resets if Vercel recycles
+  the function instance (normal serverless behavior). For a hard guarantee
+  under real load, swap in Vercel KV or Upstash Redis — both require
+  creating a resource in your Vercel/Upstash account.
+- **Spending cap** in the Anthropic console (Step 1 above) — five-minute
+  task, biggest bang for the buck.
+- **Analytics/logging** if you want to see what customers are actually
+  asking — Vercel's built-in function logs cover basic cases for free.
 
-- **Rate limiting** per visitor (e.g., a Vercel KV / Upstash Redis counter
-  capping messages per IP per hour) — the current function has no rate
-  limiting built in, so a bad actor hammering it could run up cost.
-- **A usage/cost cap** in your Anthropic console so a runaway script can't
-  surprise you with a bill.
+## Updating the Crew Chief later
 
-I kept the function itself simple on purpose so it's easy to read and modify
-— happy to add rate limiting if you want to harden it before launch.
-
-## Updating the Crew Chief's knowledge or personality later
-
-Everything the Crew Chief "knows" lives in the `SYSTEM_PROMPT` constant at
-the top of `api/chat.js`. To update tone, add new products, fix a fitment
-number, etc.: edit that file, commit, push — Vercel auto-redeploys.
+Everything he "knows" and his personality live in the `SYSTEM_PROMPT`
+constant at the top of `api/chat.js`. Edit, run `npm test` to make sure
+nothing broke, commit, push — Vercel auto-redeploys.
