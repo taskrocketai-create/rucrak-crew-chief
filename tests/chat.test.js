@@ -270,3 +270,59 @@ test("plain string content (no image) still works exactly as before", async () =
     );
   });
 });
+
+test("logs a handled call to Supabase when SUPABASE_URL/SUPABASE_SERVICE_KEY are configured", async () => {
+  await withEnv(
+    { ANTHROPIC_API_KEY: "test-key", SUPABASE_URL: "https://fake.supabase.co", SUPABASE_SERVICE_KEY: "fake-key" },
+    async () => {
+      let loggedCall = null;
+      const original = global.fetch;
+      global.fetch = async (url, opts) => {
+        if (String(url).includes("api.anthropic.com")) {
+          return { ok: true, status: 200, json: async () => ({ content: [{ type: "text", text: "reply" }] }) };
+        }
+        if (String(url).includes("rucrak_chief_calls")) {
+          loggedCall = JSON.parse(opts.body)[0];
+          return { ok: true, status: 201, json: async () => ({}) };
+        }
+        throw new Error("unexpected fetch to " + url);
+      };
+      try {
+        const { req, res } = makeReqRes({
+          body: { messages: [{ role: "user", content: "will this fit my Jeep?" }] },
+          ip: "10.0.0.15"
+        });
+        await handler(req, res);
+        assert.equal(res._status, 200);
+        // give the fire-and-forget logging call a tick to complete
+        await new Promise((r) => setTimeout(r, 10));
+        assert.ok(loggedCall, "expected a call to be logged");
+        assert.equal(loggedCall.first_message, "will this fit my Jeep?");
+        assert.equal(loggedCall.message_count, 1);
+        assert.equal(loggedCall.had_image, false);
+      } finally {
+        global.fetch = original;
+      }
+    }
+  );
+});
+
+test("skips logging silently when Supabase env vars are not configured (no crash, no extra fetch)", async () => {
+  await withEnv({ ANTHROPIC_API_KEY: "test-key", SUPABASE_URL: undefined, SUPABASE_SERVICE_KEY: undefined }, async () => {
+    let fetchCallCount = 0;
+    const original = global.fetch;
+    global.fetch = async () => {
+      fetchCallCount++;
+      return { ok: true, status: 200, json: async () => ({ content: [{ type: "text", text: "reply" }] }) };
+    };
+    try {
+      const { req, res } = makeReqRes({ body: { messages: [{ role: "user", content: "hi" }] }, ip: "10.0.0.16" });
+      await handler(req, res);
+      assert.equal(res._status, 200);
+      await new Promise((r) => setTimeout(r, 10));
+      assert.equal(fetchCallCount, 1, "only the Anthropic call should have fired, no logging call");
+    } finally {
+      global.fetch = original;
+    }
+  });
+});

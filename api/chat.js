@@ -140,6 +140,51 @@ Ask for a photo when: suspected reversed/mirrored bracket (straight-on shot of m
 
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 
+// --- Call log ---------------------------------------------------------------
+// Best-effort record of "a question got handled" — nothing fancier than that.
+// Requires SUPABASE_URL and SUPABASE_SERVICE_KEY env vars; if either is
+// missing, logging is silently skipped (never blocks or breaks a chat reply
+// over a logging failure — this is a nice-to-have, not a critical path).
+function extractPlainText(content) {
+  if (typeof content === "string") return content;
+  if (Array.isArray(content)) {
+    const textBlock = content.find((b) => b.type === "text");
+    return textBlock ? textBlock.text : "";
+  }
+  return "";
+}
+
+async function logHandledCall({ userMessages, hadImage }) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+  if (!supabaseUrl || !supabaseKey) return; // logging not configured — skip quietly
+
+  const lastUserMessage = userMessages[userMessages.length - 1];
+  const firstUserMessage = userMessages[0];
+
+  try {
+    await fetch(`${supabaseUrl}/rest/v1/rucrak_chief_calls`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: supabaseKey,
+        Authorization: `Bearer ${supabaseKey}`,
+        Prefer: "return=minimal"
+      },
+      body: JSON.stringify([{
+        first_message: extractPlainText(firstUserMessage && firstUserMessage.content).slice(0, 500),
+        last_message: extractPlainText(lastUserMessage && lastUserMessage.content).slice(0, 500),
+        message_count: userMessages.length,
+        had_image: hadImage
+      }])
+    });
+  } catch (err) {
+    // Never let a logging failure break the actual chat response.
+    console.error("Call logging failed (non-fatal):", err.message);
+  }
+}
+// ----------------------------------------------------------------------------
+
 // --- Basic rate limiting ---------------------------------------------------
 // This is a best-effort, in-memory limiter. Vercel serverless functions are
 // stateless between cold starts, so this does NOT guarantee a hard cap across
@@ -271,6 +316,13 @@ module.exports = async (req, res) => {
       .filter((b) => b.type === "text")
       .map((b) => b.text);
     const replyText = textBlocks.join("\n").trim() || "Hang on, lost my train of thought — say that again?";
+
+    // Fire-and-forget: log that this call was handled, without delaying the reply.
+    const userMessages = trimmedMessages.filter((m) => m.role === "user");
+    const hadImage = userMessages.some(
+      (m) => Array.isArray(m.content) && m.content.some((b) => b.type === "image")
+    );
+    logHandledCall({ userMessages, hadImage }).catch(() => {});
 
     return res.status(200).json({ text: replyText });
   } catch (err) {

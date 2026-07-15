@@ -18,18 +18,57 @@ none of which I can act on for you.
   for fitment reads (using the hitch receiver's standardized 2"x2" opening as
   a built-in size reference — no extra object needed in the photo).
 - `api/health.js` — a free diagnostic endpoint to confirm deployment worked.
-- `tests/chat.test.js` — **13 automated tests** (validation, error handling,
+- `tests/chat.test.js` — **15 automated tests** (validation, error handling,
   message-history trimming, rate limiting, and image-block validation) that
   run with **zero API cost** because they mock the Anthropic call. **All 13
   currently pass.**
 - `vercel.json` — explicit function config (timeouts).
-- `.env.example` — documents the two environment variables you'll need.
+- `supabase_setup.sql` — creates the optional call-log table (see below —
+  entirely optional, chat works fine without it).
+- `.env.example` — documents the environment variables you'll need.
 - `.gitignore` — keeps secrets and local files out of version control.
 - A local git repo, already initialized with commits on branch `main`,
   containing all of the above — ready for `git push` the moment you point it
   at a real GitHub remote.
 
-## About the photo fitment feature
+## About the call log (optional)
+
+Crew Chief can keep a simple record of how many questions it's actually
+handling — not full transcripts, not a learning/training system (Claude
+doesn't support fine-tuning through the API, so there's no automatic
+"gets smarter from chats" feature to build). Just a count you can look at.
+
+**What gets logged, per exchange:** the customer's first and most recent
+message (truncated to 500 characters each), how many messages were in that
+exchange, and whether a photo was attached. Nothing else — no IP address,
+no name, no phone number, unless the customer happened to type one into
+the chat itself.
+
+**Setup (optional — skip this section entirely if you don't want logging):**
+
+1. Open your existing TaskRocket Supabase project's SQL Editor
+2. Paste in and run `supabase_setup.sql` (included in this repo) — creates
+   one small table, `rucrak_chief_calls`
+3. In Vercel → Settings → Environment Variables, add two more:
+
+| Key | Value |
+|---|---|
+| `SUPABASE_URL` | your Supabase project URL |
+| `SUPABASE_SERVICE_KEY` | your Supabase service role key (not the anon key — this needs write access) |
+
+4. Redeploy
+
+**If you skip this setup:** nothing breaks. `api/chat.js` checks for those
+two environment variables before attempting to log anything — if they're
+missing, it just quietly skips logging and the chat works exactly as
+before. Logging failures also never block or slow down an actual reply to
+a customer (it fires in the background after the response is already sent).
+
+**Checking the log:** just open the `rucrak_chief_calls` table directly in
+Supabase's table editor — no dashboard was built for this on purpose, since
+you said you just want a record, not a whole analytics system. If you
+later want a simple count-by-week view or similar, that's a small add-on
+we can build when you actually want it.
 
 **How it works:** the customer taps the camera button, takes or picks a
 photo showing their spare tire and hitch receiver, and sends it — with or
@@ -58,7 +97,7 @@ significantly, keep this ceiling in mind.
 npm test
 ```
 
-You should see `# pass 13` and `# fail 0`. This proves the request handling,
+You should see `# pass 15` and `# fail 0`. This proves the request handling,
 error responses, and rate limiter all behave correctly — before you've spent
 a single cent calling the real Claude API.
 
