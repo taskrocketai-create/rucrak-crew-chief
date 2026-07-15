@@ -221,8 +221,44 @@
   .chip:hover{border-color:var(--orange);color:var(--chalk);}
 
   /* ---------- input keypad ---------- */
-  .keypad{
+  .keypad-wrap{
     margin:0 14px 14px 14px;
+  }
+  .attach-preview{
+    display:none;
+    align-items:center;
+    gap:10px;
+    background:var(--panel-raised);
+    border:1px solid var(--rivet-dark);
+    border-bottom:none;
+    border-radius:6px 6px 0 0;
+    padding:10px 12px;
+  }
+  .attach-preview.show{display:flex;}
+  .attach-preview img{
+    width:48px;height:48px;
+    object-fit:cover;
+    border-radius:4px;
+    border:1px solid var(--rivet-dark);
+  }
+  .attach-preview .attach-label{
+    flex:1;
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    color:var(--chalk-dim);
+  }
+  .attach-preview button{
+    background:none;
+    border:1px solid var(--rivet-dark);
+    color:var(--chalk-dim);
+    border-radius:4px;
+    font-size:11px;
+    padding:5px 9px;
+    cursor:pointer;
+    font-family:'JetBrains Mono',monospace;
+  }
+  .attach-preview button:hover{color:var(--chalk);border-color:var(--orange);}
+  .keypad{
     background:var(--panel-raised);
     border:1px solid var(--rivet-dark);
     border-radius:0 0 6px 6px;
@@ -230,6 +266,26 @@
     display:flex;
     gap:8px;
     align-items:flex-end;
+  }
+  button.attach{
+    flex:0 0 auto;
+    background:var(--gunmetal);
+    border:1px solid var(--rivet-dark);
+    color:var(--chalk-dim);
+    border-radius:5px;
+    padding:10px 12px;
+    cursor:pointer;
+    font-size:17px;
+    line-height:1;
+    transition:border-color 0.15s, color 0.15s;
+  }
+  button.attach:hover{border-color:var(--orange);color:var(--chalk);}
+  .msg img.attached{
+    display:block;
+    max-width:220px;
+    border-radius:6px;
+    margin-bottom:6px;
+    border:1px solid var(--rivet-dark);
   }
   textarea{
     flex:1;
@@ -317,9 +373,18 @@
   </div>
   <div class="chips" id="chips"></div>
 
-  <div class="keypad">
-    <textarea id="input" rows="1" placeholder="Ask about install, fitment, or a rattle you can't place..."></textarea>
-    <button class="send" id="sendBtn">Send</button>
+  <div class="keypad-wrap">
+    <div class="attach-preview" id="attachPreview">
+      <img id="attachThumb" alt="Attached photo">
+      <span class="attach-label">Photo attached — send with your message</span>
+      <button id="attachRemove" type="button">Remove</button>
+    </div>
+    <div class="keypad">
+      <input type="file" id="fileInput" accept="image/*" capture="environment" style="display:none">
+      <button class="attach" id="attachBtn" type="button" title="Attach a fitment photo">📷</button>
+      <textarea id="input" rows="1" placeholder="Ask about install, fitment, or a rattle you can't place..."></textarea>
+      <button class="send" id="sendBtn">Send</button>
+    </div>
   </div>
 
   <div class="footnote">Answers are grounded in rucRak documentation &amp; verified install transcripts. Safety-critical or undocumented items get flagged, not guessed.</div>
@@ -330,11 +395,17 @@
 const CHAT_ENDPOINT = '/api/chat'; // change to your deployed API URL if hosted separately
 
 let messages = [];
+let pendingImage = null; // { base64, mediaType } — set when a photo is attached, cleared after send
 const log = document.getElementById('log');
 const input = document.getElementById('input');
 const sendBtn = document.getElementById('sendBtn');
 const gauge = document.getElementById('gauge');
 const gaugeLabel = document.getElementById('gaugeLabel');
+const fileInput = document.getElementById('fileInput');
+const attachBtn = document.getElementById('attachBtn');
+const attachPreview = document.getElementById('attachPreview');
+const attachThumb = document.getElementById('attachThumb');
+const attachRemove = document.getElementById('attachRemove');
 
 const STARTERS = [
   "Why won't my tailgate open?",
@@ -358,6 +429,47 @@ function renderChips(){
 }
 renderChips();
 
+// --- photo attachment: pick/take a photo, shrink it client-side, preview it ---
+attachBtn.addEventListener('click', ()=> fileInput.click());
+
+fileInput.addEventListener('change', (e)=>{
+  const file = e.target.files && e.target.files[0];
+  if(!file) return;
+  if(!file.type.startsWith('image/')){
+    addMessage('bot', "That doesn't look like a photo — try again with an image file.");
+    fileInput.value = '';
+    return;
+  }
+  const reader = new FileReader();
+  reader.onload = (ev)=>{
+    const img = new Image();
+    img.onload = ()=>{
+      // Shrink to a reasonable max dimension so the upload stays fast and cheap,
+      // regardless of how large the original phone photo is.
+      const MAX_DIM = 1200;
+      let w = img.width, h = img.height;
+      if(w > h && w > MAX_DIM){ h = Math.round(h * (MAX_DIM / w)); w = MAX_DIM; }
+      else if(h >= w && h > MAX_DIM){ w = Math.round(w * (MAX_DIM / h)); h = MAX_DIM; }
+      const canvas = document.createElement('canvas');
+      canvas.width = w; canvas.height = h;
+      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+      const base64 = dataUrl.split(',')[1];
+      pendingImage = { base64, mediaType: 'image/jpeg', previewSrc: dataUrl };
+      attachThumb.src = dataUrl;
+      attachPreview.classList.add('show');
+    };
+    img.src = ev.target.result;
+  };
+  reader.readAsDataURL(file);
+  fileInput.value = ''; // allow re-selecting the same file later
+});
+
+attachRemove.addEventListener('click', ()=>{
+  pendingImage = null;
+  attachPreview.classList.remove('show');
+});
+
 function escapeHtml(str){
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
 }
@@ -367,13 +479,20 @@ function formatBotText(str){
   return s;
 }
 
-function addMessage(role, text){
+function addMessage(role, text, imagePreviewSrc){
   const div = document.createElement('div');
   div.className = 'msg ' + (role === 'user' ? 'user' : 'bot');
   const tag = document.createElement('span');
   tag.className = 'tag';
   tag.textContent = role === 'user' ? 'You' : 'Crew Chief';
   div.appendChild(tag);
+  if(imagePreviewSrc){
+    const img = document.createElement('img');
+    img.className = 'attached';
+    img.src = imagePreviewSrc;
+    img.alt = 'Attached photo';
+    div.appendChild(img);
+  }
   const body = document.createElement('span');
   if(role === 'user'){
     body.textContent = text;
@@ -393,15 +512,35 @@ function setThinking(on){
     : 'Torque check: <b>GOOD &amp; SNUG</b> — ask away, crew chief\'s ready.';
 }
 
+
 async function sendMessage(){
   const text = input.value.trim();
-  if(!text) return;
+  const hasImage = !!pendingImage;
+  if(!text && !hasImage) return;
+
   input.value = '';
   input.style.height = 'auto';
   sendBtn.disabled = true;
 
-  addMessage('user', text);
-  messages.push({role:'user', content: text});
+  // Build the outgoing content: array with image (if any) + text, or just a string.
+  let outgoingContent;
+  if(hasImage){
+    const blocks = [];
+    blocks.push({
+      type: 'image',
+      source: { type: 'base64', media_type: pendingImage.mediaType, data: pendingImage.base64 }
+    });
+    blocks.push({ type: 'text', text: text || "Here's a photo for a fitment check — can you take a look?" });
+    outgoingContent = blocks;
+  } else {
+    outgoingContent = text;
+  }
+
+  addMessage('user', text || "(photo attached)", hasImage ? pendingImage.previewSrc : null);
+  messages.push({ role: 'user', content: outgoingContent });
+
+  pendingImage = null;
+  attachPreview.classList.remove('show');
 
   const typingDiv = document.createElement('div');
   typingDiv.className = 'msg bot';

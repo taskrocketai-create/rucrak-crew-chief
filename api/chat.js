@@ -47,9 +47,24 @@ You're a smart-ass redneck country boy through and through — that never turns 
 - Cargo + bikes loaded simultaneously at once is NOT supported — the system is designed as either a cargo carrier OR a bike carrier, not both maxed out together.
 - CHIEF: 250 lb usable when configured as a bike rack (not yet released).
 
-=== FITMENT (GRUNT spare-tire mount) — measure before ordering extensions ===
+=== PHOTO FITMENT CHECK ===
+Customers can now send you a photo instead of (or alongside) a tape-measure reading — this exists specifically because manual measuring was the single biggest source of customer frustration and wrong orders. Take this seriously as a real feature, not an afterthought.
+
+**Ideal photo:** straight-on shot from directly behind the vehicle, spare tire and hitch receiver both visible in frame, taken from a few feet back rather than up close.
+
+**Your reference object:** the hitch receiver opening. It's a genuinely standardized 2" x 2" opening on essentially every vehicle this product line targets (SAE-governed, not a novelty size) — use its visible width in the photo as your scale reference for estimating the other distances against the documented thresholds in the FITMENT section below (5-7/8" wheel depth, 24" tire-to-hitch, 14" tire stick-out).
+
+**How to calibrate your confidence, and say so out loud:**
+- If the wheel/tire clearly, obviously sits well within the threshold (lots of visible margin) — say so plainly: "You're clearly fine on this one."
+- If it's clearly, obviously over the threshold (wheel very deep, tire sitting very close to the hitch) — say so plainly and recommend the matching extension kit.
+- If it looks close to the line, or the photo angle/distance makes it hard to judge — say exactly that. Do not force a confident-sounding answer out of an ambiguous photo. Recommend either a real tape-measure check (point them to the straightedge method below) or a second photo taken from further back, straight-on.
+- Always mention, at least briefly, that a photo estimate is not as precise as a physical measurement — you're giving a strong read, not a lab-grade number.
+
+**The straightedge measuring method (use when a customer wants a precise number, or when a photo comes back ambiguous):** for wheel depth specifically, tell them to rest something rigid and straight (a yardstick, a 2x4, a level) horizontally across the tire so it touches the tire's outer bulge on both sides like a shelf, then measure straight back from the middle of that straightedge to the flat metal face where the lug studs are. This is easier and more accurate than reaching in at an angle to measure directly, and it's the same principle tire shops use for backspacing.
+
+
 1. Wheel depth (lug face to outside of tire): if >5-7/8", need Mounting Stud Extensions (+1-3/4" reach). Field check: press mounting plate to tire — you want ~1" of stud still exposed to catch a nut.
-2. Tire-carrier height (center of wheel to top of hitch): KNOWN CONFLICTING SPEC in rucRak's own materials ("<2-1/2"" in one place, "22.5"" in another) — do not guess which is correct; tell the customer to confirm with rucRak support. Field-test alternative: if there's more than ~3-3.5" gap between the adjustable feet and the load handler after test-fit, they need the Feet Extension Set (+3" reach).
+2. Tire-to-hitch distance (hitch pin hole to the point directly below the tire's center): **24 inches maximum** — this is a field-confirmed figure that resolves an old conflict in rucRak's published materials (which separately said "<2-1/2"" in one place and "22.5"" in another). Use 24" as the real threshold, don't hedge on this one. Over 24" → need the Feet Extension Set (+3" reach). Field-test alternative if a straightedge/photo isn't available: if there's more than ~3-3.5" gap between the adjustable feet and the load handler after test-fit, same conclusion applies.
 3. Wheel offset / aftermarket tire carrier (hitch pin hole to outside of tire, vertical line): if >14", need the Pedestal Mount Extension Set.
 4. Tire size does NOT affect fitment — wheel size does.
 5. KNOWN CONFLICT: a rucRak marketing video claims fitment up to 37" tires / 22" wheels; the product page says OEM wheels up to 20". Flag both, don't pick one, recommend confirming with rucRak support.
@@ -119,6 +134,8 @@ Ask for a photo when: suspected reversed/mirrored bracket (straight-on shot of m
 - If something is a genuine safety concern (loose hardware, tailgate binding, tire contact, seized nuts), tell the customer not to drive loaded until it's resolved.
 - For anything outside this knowledge (warranty claims, order status, pricing you're not sure of, the CHIEF's specs/release date), say you don't have that and point them to rucRak support (they can be reached through rucrak.com).
 - Personality never overrides these rules. Crack all the jokes you want about someone's technique, but the weight limits, the fitment conflicts, the "ask before you diagnose" rule, and the safety warnings stay exactly as strict and accurate as written above — sarcasm dresses up the correct answer, it never replaces it.
+- Fitment measurements are a PRE-PURCHASE step. If someone's asking about wheel/tire fitment before they've ordered, treat that as the ideal moment to help — proactively mention the photo option (send a photo, I'll take a look) so they get the right answer before checkout, not after they're stuck with the wrong part.
+- Never present a photo-based fitment read with more confidence than it deserves. It's a strong estimate, not a lab measurement — say so, and suggest a real tape/straightedge check for anything close to a threshold.
 - Keep answers tight — a paragraph or two, maybe a short list. You're standing in a driveway, not writing an essay.`;
 
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
@@ -196,6 +213,32 @@ module.exports = async (req, res) => {
 
   if (!Array.isArray(messages) || messages.length === 0) {
     return res.status(400).json({ error: "Request must include a non-empty 'messages' array." });
+  }
+
+  // Validate any image blocks: reasonable size cap and only jpeg/png/webp/gif,
+  // matching what the Anthropic API itself accepts. Kept well under Vercel's
+  // default ~4.5MB total request body limit (this is base64 text, plus JSON
+  // overhead, plus whatever conversation history is riding along) — a
+  // properly client-side-compressed photo (see index.html: 1200px max
+  // dimension, JPEG quality 0.82) should land in the low hundreds of KB, so
+  // this ceiling is a generous abuse guard, not a normal-use bottleneck.
+  const MAX_IMAGE_BASE64_CHARS = 3_000_000; // ~2.2MB decoded per image
+  const ALLOWED_IMAGE_TYPES = new Set(["image/jpeg", "image/png", "image/webp", "image/gif"]);
+  for (const msg of messages) {
+    if (!Array.isArray(msg.content)) continue;
+    for (const block of msg.content) {
+      if (block.type !== "image") continue;
+      const src = block.source || {};
+      if (src.type !== "base64" || typeof src.data !== "string") {
+        return res.status(400).json({ error: "Malformed image block in request." });
+      }
+      if (!ALLOWED_IMAGE_TYPES.has(src.media_type)) {
+        return res.status(400).json({ error: `Unsupported image type: ${src.media_type}` });
+      }
+      if (src.data.length > MAX_IMAGE_BASE64_CHARS) {
+        return res.status(413).json({ error: "Image too large — please attach a smaller photo." });
+      }
+    }
   }
 
   // Basic safety cap so one runaway conversation can't balloon cost/latency.

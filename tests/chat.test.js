@@ -184,3 +184,89 @@ test("rate limits a single IP after too many requests in the window", async () =
     );
   });
 });
+
+test("accepts a well-formed image content block and passes it through to the Anthropic API", async () => {
+  await withEnv({ ANTHROPIC_API_KEY: "test-key" }, async () => {
+    let capturedBody = null;
+    await withMockedFetch(
+      async (_url, opts) => {
+        capturedBody = JSON.parse(opts.body);
+        return { ok: true, status: 200, json: async () => ({ content: [{ type: "text", text: "looks fine to me" }] }) };
+      },
+      async () => {
+        const imageMessage = {
+          role: "user",
+          content: [
+            { type: "image", source: { type: "base64", media_type: "image/jpeg", data: "ZmFrZWJhc2U2NGRhdGE=" } },
+            { type: "text", text: "Can you check my fitment?" }
+          ]
+        };
+        const { req, res } = makeReqRes({ body: { messages: [imageMessage] }, ip: "10.0.0.10" });
+        await handler(req, res);
+        assert.equal(res._status, 200);
+        assert.equal(res._json.text, "looks fine to me");
+        // Confirm the image block actually made it through to the upstream call unmodified.
+        const sentContent = capturedBody.messages[0].content;
+        assert.equal(sentContent[0].type, "image");
+        assert.equal(sentContent[0].source.media_type, "image/jpeg");
+      }
+    );
+  });
+});
+
+test("rejects an image block with a malformed source (not base64)", async () => {
+  await withEnv({ ANTHROPIC_API_KEY: "test-key" }, async () => {
+    const badMessage = {
+      role: "user",
+      content: [{ type: "image", source: { type: "url", url: "https://example.com/x.jpg" } }]
+    };
+    const { req, res } = makeReqRes({ body: { messages: [badMessage] }, ip: "10.0.0.11" });
+    await handler(req, res);
+    assert.equal(res._status, 400);
+    assert.match(res._json.error, /Malformed image block/);
+  });
+});
+
+test("rejects an unsupported image media type", async () => {
+  await withEnv({ ANTHROPIC_API_KEY: "test-key" }, async () => {
+    const badMessage = {
+      role: "user",
+      content: [{ type: "image", source: { type: "base64", media_type: "image/tiff", data: "ZmFrZQ==" } }]
+    };
+    const { req, res } = makeReqRes({ body: { messages: [badMessage] }, ip: "10.0.0.12" });
+    await handler(req, res);
+    assert.equal(res._status, 400);
+    assert.match(res._json.error, /Unsupported image type/);
+  });
+});
+
+test("rejects an oversized image payload", async () => {
+  await withEnv({ ANTHROPIC_API_KEY: "test-key" }, async () => {
+    const hugeData = "A".repeat(3_000_001); // one char over the 3,000,000-char ceiling
+    const badMessage = {
+      role: "user",
+      content: [{ type: "image", source: { type: "base64", media_type: "image/jpeg", data: hugeData } }]
+    };
+    const { req, res } = makeReqRes({ body: { messages: [badMessage] }, ip: "10.0.0.13" });
+    await handler(req, res);
+    assert.equal(res._status, 413);
+    assert.match(res._json.error, /too large/);
+  });
+});
+
+test("plain string content (no image) still works exactly as before", async () => {
+  await withEnv({ ANTHROPIC_API_KEY: "test-key" }, async () => {
+    await withMockedFetch(
+      async () => ({ ok: true, status: 200, json: async () => ({ content: [{ type: "text", text: "still works" }] }) }),
+      async () => {
+        const { req, res } = makeReqRes({
+          body: { messages: [{ role: "user", content: "plain text question" }] },
+          ip: "10.0.0.14"
+        });
+        await handler(req, res);
+        assert.equal(res._status, 200);
+        assert.equal(res._json.text, "still works");
+      }
+    );
+  });
+});
