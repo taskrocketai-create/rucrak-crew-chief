@@ -235,19 +235,49 @@
     padding:10px 12px;
   }
   .attach-preview.show{display:flex;}
-  .attach-preview img{
+  .attach-thumbs{
+    display:flex;
+    gap:8px;
+    overflow-x:auto;
+    flex:0 1 auto;
+  }
+  .attach-thumb{
+    position:relative;
+    flex:0 0 auto;
+    width:48px;height:48px;
+  }
+  .attach-thumb img{
     width:48px;height:48px;
     object-fit:cover;
     border-radius:4px;
     border:1px solid var(--rivet-dark);
+    display:block;
   }
+  .attach-thumb .thumb-remove{
+    position:absolute;
+    top:-6px;right:-6px;
+    width:18px;height:18px;
+    border-radius:50%;
+    background:var(--gunmetal);
+    border:1px solid var(--rivet-dark);
+    color:var(--chalk-dim);
+    font-size:11px;
+    line-height:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+    cursor:pointer;
+    padding:0;
+  }
+  .attach-thumb .thumb-remove:hover{color:var(--chalk);border-color:var(--orange);}
   .attach-preview .attach-label{
     flex:1;
     font-family:'JetBrains Mono',monospace;
     font-size:11px;
     color:var(--chalk-dim);
+    white-space:nowrap;
   }
-  .attach-preview button{
+  .attach-preview button:not(.thumb-remove){
     background:none;
     border:1px solid var(--rivet-dark);
     color:var(--chalk-dim);
@@ -256,8 +286,9 @@
     padding:5px 9px;
     cursor:pointer;
     font-family:'JetBrains Mono',monospace;
+    flex:0 0 auto;
   }
-  .attach-preview button:hover{color:var(--chalk);border-color:var(--orange);}
+  .attach-preview button:not(.thumb-remove):hover{color:var(--chalk);border-color:var(--orange);}
   .keypad{
     background:var(--panel-raised);
     border:1px solid var(--rivet-dark);
@@ -311,19 +342,6 @@
     white-space:nowrap;
   }
   .attach-menu button:hover{background:var(--gunmetal);color:var(--orange);}
-  button.attach.mic-active{
-    border-color:var(--orange);
-    color:var(--orange);
-    animation:micPulse 1s ease-in-out infinite;
-  }
-  @keyframes micPulse{
-    0%,100%{box-shadow:0 0 0 0 rgba(255,106,19,0.45);}
-    50%{box-shadow:0 0 0 7px rgba(255,106,19,0);}
-  }
-  button.attach.voice-on{
-    border-color:var(--good-green);
-    color:var(--good-green);
-  }
   .msg img.attached{
     display:block;
     max-width:220px;
@@ -419,23 +437,21 @@
 
   <div class="keypad-wrap">
     <div class="attach-preview" id="attachPreview">
-      <img id="attachThumb" alt="Attached photo">
-      <span class="attach-label">Photo attached — send with your message</span>
-      <button id="attachRemove" type="button">Remove</button>
+      <div class="attach-thumbs" id="attachThumbs"></div>
+      <span class="attach-label" id="attachLabel">Photos attached — send with your message</span>
+      <button id="attachRemove" type="button">Clear all</button>
     </div>
     <div class="keypad">
       <input type="file" id="fileInputCamera" accept="image/*" capture="environment" style="display:none">
-      <input type="file" id="fileInputGallery" accept="image/*" style="display:none">
+      <input type="file" id="fileInputGallery" accept="image/*" multiple style="display:none">
       <div class="attach-menu-wrap">
-        <button class="attach" id="attachBtn" type="button" title="Attach a fitment photo">📷</button>
+        <button class="attach" id="attachBtn" type="button" title="Attach fitment photos">📷</button>
         <div class="attach-menu" id="attachMenu">
           <button type="button" id="attachMenuCamera">📷 Take Photo</button>
           <button type="button" id="attachMenuGallery">🖼️ Choose from Library</button>
         </div>
       </div>
-      <button class="attach" id="micBtn" type="button" title="Talk to Crew Chief">🎤</button>
       <textarea id="input" rows="1" placeholder="Ask about install, fitment, or a rattle you can't place..."></textarea>
-      <button class="attach" id="voiceToggleBtn" type="button" title="Turn on Crew Chief's spoken replies">🔇</button>
       <button class="send" id="sendBtn">Send</button>
     </div>
   </div>
@@ -448,7 +464,7 @@
 const CHAT_ENDPOINT = '/api/chat'; // change to your deployed API URL if hosted separately
 
 let messages = [];
-let pendingImage = null; // { base64, mediaType } — set when a photo is attached, cleared after send
+let pendingImages = []; // array of { base64, mediaType, previewSrc } — cleared after send
 const log = document.getElementById('log');
 const input = document.getElementById('input');
 const sendBtn = document.getElementById('sendBtn');
@@ -461,10 +477,9 @@ const attachMenu = document.getElementById('attachMenu');
 const attachMenuCamera = document.getElementById('attachMenuCamera');
 const attachMenuGallery = document.getElementById('attachMenuGallery');
 const attachPreview = document.getElementById('attachPreview');
-const attachThumb = document.getElementById('attachThumb');
+const attachThumbs = document.getElementById('attachThumbs');
+const attachLabel = document.getElementById('attachLabel');
 const attachRemove = document.getElementById('attachRemove');
-const micBtn = document.getElementById('micBtn');
-const voiceToggleBtn = document.getElementById('voiceToggleBtn');
 
 const STARTERS = [
   "Why won't my tailgate open?",
@@ -507,152 +522,95 @@ attachMenuGallery.addEventListener('click', ()=>{
   fileInputGallery.click();
 });
 
-function handleSelectedFile(file, inputEl){
-  if(!file) return;
-  if(!file.type.startsWith('image/')){
-    addMessage('bot', "That doesn't look like a photo — try again with an image file.");
+const MAX_IMAGES = 6; // cap so a big multi-select doesn't blow up the request size
+
+function renderAttachThumbs(){
+  attachThumbs.innerHTML = '';
+  pendingImages.forEach((imgData, idx)=>{
+    const thumb = document.createElement('div');
+    thumb.className = 'attach-thumb';
+    const img = document.createElement('img');
+    img.src = imgData.previewSrc;
+    img.alt = 'Attached photo';
+    const removeBtn = document.createElement('button');
+    removeBtn.className = 'thumb-remove';
+    removeBtn.type = 'button';
+    removeBtn.textContent = '×';
+    removeBtn.title = 'Remove this photo';
+    removeBtn.onclick = ()=>{
+      pendingImages.splice(idx, 1);
+      if(pendingImages.length === 0){
+        attachPreview.classList.remove('show');
+      } else {
+        renderAttachThumbs();
+      }
+    };
+    thumb.appendChild(img);
+    thumb.appendChild(removeBtn);
+    attachThumbs.appendChild(thumb);
+  });
+  attachLabel.textContent = pendingImages.length > 1
+    ? `${pendingImages.length} photos attached — send with your message`
+    : 'Photo attached — send with your message';
+}
+
+function handleSelectedFiles(fileList, inputEl){
+  const files = Array.from(fileList || []);
+  if(!files.length) return;
+
+  const room = MAX_IMAGES - pendingImages.length;
+  if(room <= 0){
+    addMessage('bot', `That's plenty — I can only look at ${MAX_IMAGES} photos at once. Send what you've got or clear some first.`);
     inputEl.value = '';
     return;
   }
-  const reader = new FileReader();
-  reader.onload = (ev)=>{
-    const img = new Image();
-    img.onload = ()=>{
-      // Shrink to a reasonable max dimension so the upload stays fast and cheap,
-      // regardless of how large the original phone photo is.
-      const MAX_DIM = 1200;
-      let w = img.width, h = img.height;
-      if(w > h && w > MAX_DIM){ h = Math.round(h * (MAX_DIM / w)); w = MAX_DIM; }
-      else if(h >= w && h > MAX_DIM){ w = Math.round(w * (MAX_DIM / h)); h = MAX_DIM; }
-      const canvas = document.createElement('canvas');
-      canvas.width = w; canvas.height = h;
-      canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-      const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
-      const base64 = dataUrl.split(',')[1];
-      pendingImage = { base64, mediaType: 'image/jpeg', previewSrc: dataUrl };
-      attachThumb.src = dataUrl;
-      attachPreview.classList.add('show');
+  const toProcess = files.slice(0, room);
+  if(files.length > room){
+    addMessage('bot', `Grabbing the first ${room} of those — ${MAX_IMAGES} photos is my limit per message.`);
+  }
+
+  toProcess.forEach(file=>{
+    if(!file.type.startsWith('image/')){
+      addMessage('bot', `"${file.name}" doesn't look like a photo — skipping that one.`);
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+      const img = new Image();
+      img.onload = ()=>{
+        // Shrink to a reasonable max dimension so the upload stays fast and cheap,
+        // regardless of how large the original phone photo is.
+        const MAX_DIM = 1200;
+        let w = img.width, h = img.height;
+        if(w > h && w > MAX_DIM){ h = Math.round(h * (MAX_DIM / w)); w = MAX_DIM; }
+        else if(h >= w && h > MAX_DIM){ w = Math.round(w * (MAX_DIM / h)); h = MAX_DIM; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+        const base64 = dataUrl.split(',')[1];
+        pendingImages.push({ base64, mediaType: 'image/jpeg', previewSrc: dataUrl });
+        attachPreview.classList.add('show');
+        renderAttachThumbs();
+      };
+      img.src = ev.target.result;
     };
-    img.src = ev.target.result;
-  };
-  reader.readAsDataURL(file);
-  inputEl.value = ''; // allow re-selecting the same file later
+    reader.readAsDataURL(file);
+  });
+  inputEl.value = ''; // allow re-selecting the same file(s) later
 }
 
 fileInputCamera.addEventListener('change', (e)=>{
-  handleSelectedFile(e.target.files && e.target.files[0], fileInputCamera);
+  handleSelectedFiles(e.target.files, fileInputCamera);
 });
 fileInputGallery.addEventListener('change', (e)=>{
-  handleSelectedFile(e.target.files && e.target.files[0], fileInputGallery);
+  handleSelectedFiles(e.target.files, fileInputGallery);
 });
 
 attachRemove.addEventListener('click', ()=>{
-  pendingImage = null;
+  pendingImages = [];
   attachPreview.classList.remove('show');
 });
-
-// --- Voice: talk to Crew Chief (speech-to-text) and hear it talk back (text-to-speech) ---
-// Speech recognition (mic input) is a browser feature that works well on Chrome/Android and
-// desktop, but is unreliable or unsupported on iPhone Safari — that's an iOS/Apple limitation,
-// not something fixable from this code. Speaking replies back (speech synthesis) works broadly,
-// including on iPhone, so that half works everywhere even where the mic doesn't.
-let voiceModeOn = false;
-let isListening = false;
-let hasNudgedVoiceOn = false;
-const SpeechRecognitionAPI = window.SpeechRecognition || window.webkitSpeechRecognition;
-let recognition = null;
-
-if(SpeechRecognitionAPI){
-  recognition = new SpeechRecognitionAPI();
-  recognition.lang = 'en-US';
-  recognition.continuous = false;
-  recognition.interimResults = false;
-  recognition.maxAlternatives = 1;
-
-  recognition.onstart = ()=>{
-    isListening = true;
-    micBtn.classList.add('mic-active');
-  };
-  recognition.onresult = (e)=>{
-    const transcript = e.results && e.results[0] && e.results[0][0] ? e.results[0][0].transcript : '';
-    if(transcript){
-      input.value = transcript;
-      // First successful voice input turns on spoken replies too — if they're talking to it,
-      // they almost certainly want to hear it talk back.
-      if(!hasNudgedVoiceOn){
-        hasNudgedVoiceOn = true;
-        if(!voiceModeOn) setVoiceMode(true);
-      }
-      sendMessage();
-    }
-  };
-  recognition.onerror = (e)=>{
-    isListening = false;
-    micBtn.classList.remove('mic-active');
-    if(e.error === 'not-allowed' || e.error === 'permission-denied'){
-      addMessage('bot', "Can't hear you — looks like microphone access got blocked. Check your browser's site permissions and give it another go.");
-    }
-  };
-  recognition.onend = ()=>{
-    isListening = false;
-    micBtn.classList.remove('mic-active');
-  };
-
-  micBtn.addEventListener('click', ()=>{
-    if(isListening){
-      recognition.stop();
-    } else {
-      try{ recognition.start(); } catch(err){ /* already running, ignore */ }
-    }
-  });
-} else {
-  // No mic support in this browser (notably iPhone/iPad Safari) — disable rather than
-  // pretend it works, and explain why on the one time someone taps it.
-  micBtn.disabled = true;
-  micBtn.title = "Voice input isn't supported in this browser — try Chrome, or just type";
-  micBtn.addEventListener('click', ()=>{
-    addMessage('bot', "This browser doesn't support voice input — that's more common on iPhone Safari. Try Chrome, or just type it in and I'll still read your replies out loud if you turn that on.");
-  }, { once: true });
-}
-
-// Speech synthesis (Crew Chief talking back) — broadly supported, including iPhone.
-let preferredVoice = null;
-function pickVoice(){
-  const voices = window.speechSynthesis ? window.speechSynthesis.getVoices() : [];
-  if(!voices.length) return;
-  preferredVoice =
-    voices.find(v => /en-US/i.test(v.lang) && /male/i.test(v.name)) ||
-    voices.find(v => /en-US/i.test(v.lang)) ||
-    voices.find(v => /^en/i.test(v.lang)) ||
-    voices[0];
-}
-if(window.speechSynthesis){
-  pickVoice();
-  window.speechSynthesis.onvoiceschanged = pickVoice;
-}
-
-function speak(text){
-  if(!window.speechSynthesis) return;
-  // Strip markdown bold markers and collapse whitespace so it doesn't read "asterisk asterisk" etc.
-  const clean = text.replace(/\*\*/g, '').replace(/\s+/g, ' ').trim();
-  if(!clean) return;
-  window.speechSynthesis.cancel(); // don't stack replies if one's already talking
-  const utterance = new SpeechSynthesisUtterance(clean);
-  if(preferredVoice) utterance.voice = preferredVoice;
-  utterance.rate = 1.0;
-  utterance.pitch = 1.0;
-  window.speechSynthesis.speak(utterance);
-}
-
-function setVoiceMode(on){
-  voiceModeOn = on;
-  voiceToggleBtn.textContent = on ? '🔊' : '🔇';
-  voiceToggleBtn.classList.toggle('voice-on', on);
-  voiceToggleBtn.title = on ? "Crew Chief's spoken replies are ON — tap to mute" : "Turn on Crew Chief's spoken replies";
-  if(!on && window.speechSynthesis) window.speechSynthesis.cancel();
-}
-setVoiceMode(false);
-voiceToggleBtn.addEventListener('click', ()=> setVoiceMode(!voiceModeOn));
 
 function escapeHtml(str){
   return str.replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;');
@@ -663,20 +621,21 @@ function formatBotText(str){
   return s;
 }
 
-function addMessage(role, text, imagePreviewSrc){
+function addMessage(role, text, imagePreviewSrcs){
   const div = document.createElement('div');
   div.className = 'msg ' + (role === 'user' ? 'user' : 'bot');
   const tag = document.createElement('span');
   tag.className = 'tag';
   tag.textContent = role === 'user' ? 'You' : 'Crew Chief';
   div.appendChild(tag);
-  if(imagePreviewSrc){
+  const previews = Array.isArray(imagePreviewSrcs) ? imagePreviewSrcs : (imagePreviewSrcs ? [imagePreviewSrcs] : []);
+  previews.forEach(src=>{
     const img = document.createElement('img');
     img.className = 'attached';
-    img.src = imagePreviewSrc;
+    img.src = src;
     img.alt = 'Attached photo';
     div.appendChild(img);
-  }
+  });
   const body = document.createElement('span');
   if(role === 'user'){
     body.textContent = text;
@@ -699,32 +658,36 @@ function setThinking(on){
 
 async function sendMessage(){
   const text = input.value.trim();
-  const hasImage = !!pendingImage;
-  if(!text && !hasImage) return;
+  const hasImages = pendingImages.length > 0;
+  if(!text && !hasImages) return;
 
   input.value = '';
   input.style.height = 'auto';
   sendBtn.disabled = true;
 
-  // Build the outgoing content: array with image (if any) + text, or just a string.
+  // Build the outgoing content: array with image(s) (if any) + text, or just a string.
   let outgoingContent;
-  if(hasImage){
-    const blocks = [];
-    blocks.push({
+  if(hasImages){
+    const blocks = pendingImages.map(imgData => ({
       type: 'image',
-      source: { type: 'base64', media_type: pendingImage.mediaType, data: pendingImage.base64 }
-    });
-    blocks.push({ type: 'text', text: text || "Here's a photo for a fitment check — can you take a look?" });
+      source: { type: 'base64', media_type: imgData.mediaType, data: imgData.base64 }
+    }));
+    const defaultText = pendingImages.length > 1
+      ? "Here's a few photos for a fitment check — can you take a look?"
+      : "Here's a photo for a fitment check — can you take a look?";
+    blocks.push({ type: 'text', text: text || defaultText });
     outgoingContent = blocks;
   } else {
     outgoingContent = text;
   }
 
-  addMessage('user', text || "(photo attached)", hasImage ? pendingImage.previewSrc : null);
+  const previewSrcs = pendingImages.map(imgData => imgData.previewSrc);
+  addMessage('user', text || (pendingImages.length > 1 ? "(photos attached)" : "(photo attached)"), hasImages ? previewSrcs : null);
   messages.push({ role: 'user', content: outgoingContent });
 
-  pendingImage = null;
+  pendingImages = [];
   attachPreview.classList.remove('show');
+  attachThumbs.innerHTML = '';
 
   const typingDiv = document.createElement('div');
   typingDiv.className = 'msg bot';
@@ -747,7 +710,6 @@ async function sendMessage(){
     typingDiv.remove();
     addMessage('bot', replyText);
     messages.push({role:'assistant', content: replyText});
-    if(voiceModeOn) speak(replyText);
   } catch(err){
     typingDiv.remove();
     addMessage('bot', "Well shoot, somethin' broke back here: " + err.message + "\n\n(Check that the /api/chat function is deployed and ANTHROPIC_API_KEY is set in your hosting environment.)");
