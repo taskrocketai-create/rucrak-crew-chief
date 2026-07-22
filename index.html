@@ -281,6 +281,36 @@
   }
   button.attach:hover{border-color:var(--orange);color:var(--chalk);}
   button.attach:disabled{opacity:0.4;cursor:not-allowed;}
+  .attach-menu-wrap{position:relative;flex:0 0 auto;}
+  .attach-menu{
+    display:none;
+    position:absolute;
+    bottom:calc(100% + 8px);
+    left:0;
+    flex-direction:column;
+    gap:4px;
+    background:var(--panel-raised);
+    border:1px solid var(--rivet-dark);
+    border-radius:6px;
+    padding:6px;
+    box-shadow:0 8px 18px rgba(0,0,0,0.4);
+    z-index:20;
+    min-width:190px;
+  }
+  .attach-menu.show{display:flex;}
+  .attach-menu button{
+    background:none;
+    border:none;
+    color:var(--chalk);
+    text-align:left;
+    padding:9px 10px;
+    border-radius:4px;
+    cursor:pointer;
+    font-family:'Inter',sans-serif;
+    font-size:13.5px;
+    white-space:nowrap;
+  }
+  .attach-menu button:hover{background:var(--gunmetal);color:var(--orange);}
   button.attach.mic-active{
     border-color:var(--orange);
     color:var(--orange);
@@ -394,8 +424,15 @@
       <button id="attachRemove" type="button">Remove</button>
     </div>
     <div class="keypad">
-      <input type="file" id="fileInput" accept="image/*" style="display:none">
-      <button class="attach" id="attachBtn" type="button" title="Attach a fitment photo">📷</button>
+      <input type="file" id="fileInputCamera" accept="image/*" capture="environment" style="display:none">
+      <input type="file" id="fileInputGallery" accept="image/*" style="display:none">
+      <div class="attach-menu-wrap">
+        <button class="attach" id="attachBtn" type="button" title="Attach a fitment photo">📷</button>
+        <div class="attach-menu" id="attachMenu">
+          <button type="button" id="attachMenuCamera">📷 Take Photo</button>
+          <button type="button" id="attachMenuGallery">🖼️ Choose from Library</button>
+        </div>
+      </div>
       <button class="attach" id="micBtn" type="button" title="Talk to Crew Chief">🎤</button>
       <textarea id="input" rows="1" placeholder="Ask about install, fitment, or a rattle you can't place..."></textarea>
       <button class="attach" id="voiceToggleBtn" type="button" title="Turn on Crew Chief's spoken replies">🔇</button>
@@ -417,8 +454,12 @@ const input = document.getElementById('input');
 const sendBtn = document.getElementById('sendBtn');
 const gauge = document.getElementById('gauge');
 const gaugeLabel = document.getElementById('gaugeLabel');
-const fileInput = document.getElementById('fileInput');
+const fileInputCamera = document.getElementById('fileInputCamera');
+const fileInputGallery = document.getElementById('fileInputGallery');
 const attachBtn = document.getElementById('attachBtn');
+const attachMenu = document.getElementById('attachMenu');
+const attachMenuCamera = document.getElementById('attachMenuCamera');
+const attachMenuGallery = document.getElementById('attachMenuGallery');
 const attachPreview = document.getElementById('attachPreview');
 const attachThumb = document.getElementById('attachThumb');
 const attachRemove = document.getElementById('attachRemove');
@@ -447,15 +488,30 @@ function renderChips(){
 }
 renderChips();
 
-// --- photo attachment: pick/take a photo, shrink it client-side, preview it ---
-attachBtn.addEventListener('click', ()=> fileInput.click());
+// --- photo attachment: tapping the camera button offers a choice — Take Photo or Choose
+// from Library — each routed to its own hidden file input, since relying on a single input
+// to offer both options isn't consistent across browsers/devices. ---
+attachBtn.addEventListener('click', (e)=>{
+  e.stopPropagation();
+  attachMenu.classList.toggle('show');
+});
+document.addEventListener('click', ()=> attachMenu.classList.remove('show'));
+attachMenu.addEventListener('click', (e)=> e.stopPropagation());
 
-fileInput.addEventListener('change', (e)=>{
-  const file = e.target.files && e.target.files[0];
+attachMenuCamera.addEventListener('click', ()=>{
+  attachMenu.classList.remove('show');
+  fileInputCamera.click();
+});
+attachMenuGallery.addEventListener('click', ()=>{
+  attachMenu.classList.remove('show');
+  fileInputGallery.click();
+});
+
+function handleSelectedFile(file, inputEl){
   if(!file) return;
   if(!file.type.startsWith('image/')){
     addMessage('bot', "That doesn't look like a photo — try again with an image file.");
-    fileInput.value = '';
+    inputEl.value = '';
     return;
   }
   const reader = new FileReader();
@@ -480,7 +536,14 @@ fileInput.addEventListener('change', (e)=>{
     img.src = ev.target.result;
   };
   reader.readAsDataURL(file);
-  fileInput.value = ''; // allow re-selecting the same file later
+  inputEl.value = ''; // allow re-selecting the same file later
+}
+
+fileInputCamera.addEventListener('change', (e)=>{
+  handleSelectedFile(e.target.files && e.target.files[0], fileInputCamera);
+});
+fileInputGallery.addEventListener('change', (e)=>{
+  handleSelectedFile(e.target.files && e.target.files[0], fileInputGallery);
 });
 
 attachRemove.addEventListener('click', ()=>{
