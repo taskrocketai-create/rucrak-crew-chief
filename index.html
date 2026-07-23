@@ -21,57 +21,116 @@
     --good-green:#4C9A5D;
   }
   *{box-sizing:border-box;}
-  html,body{margin:0;padding:0;height:100%;background:var(--gunmetal);}
+  html,body{margin:0;padding:0;background:transparent;}
   body{
     font-family:'Inter',sans-serif;
     color:var(--chalk);
-    display:flex;
-    justify-content:center;
-    min-height:100vh;
   }
-  .stage{
+
+  /* ---------- Corner widget shell ---------- */
+  .chat-widget{
+    position:fixed;
+    bottom:20px;
+    right:20px;
+    z-index:1000;
     display:flex;
+    flex-direction:column;
     align-items:flex-end;
-    justify-content:center;
-    gap:0;
-    width:100%;
-    max-width:980px;
   }
-  .crew-chief-card{
-    display:none; /* shown on wide viewports only, see media query below */
+
+  .chat-toggle{
+    width:64px;
+    height:64px;
+    border-radius:50%;
+    border:2px solid var(--orange);
+    background:var(--panel-raised) url('/crew-chief.png') center 18% / 180% no-repeat;
+    cursor:pointer;
+    box-shadow:0 6px 18px rgba(0,0,0,0.4);
+    position:relative;
     flex:0 0 auto;
-    width:200px;
-    margin:0 -18px 40px 0;
-    transform:rotate(-3deg);
+  }
+  .chat-toggle:hover{ transform:scale(1.04); }
+  .chat-toggle .ping{
+    position:absolute;
+    top:-2px; right:-2px;
+    width:14px; height:14px;
+    border-radius:50%;
+    background:var(--good-green);
+    border:2px solid var(--gunmetal);
+  }
+  .chat-widget.open .chat-toggle{ display:none; }
+
+  .chat-panel{
+    display:none;
+    position:relative;
+    width:380px;
+    max-width:calc(100vw - 24px);
+    height:min(640px, calc(100vh - 100px));
+    margin-bottom:12px;
+  }
+  .chat-widget.open .chat-panel{ display:flex; flex-direction:column; }
+
+  .crew-chief-card{
+    position:absolute;
+    top:-58px;
+    left:-26px;
+    width:110px;
+    transform:rotate(-6deg);
     background:var(--chalk);
-    border-radius:10px;
-    padding:8px 8px 14px;
-    box-shadow:0 10px 24px rgba(0,0,0,0.35);
+    border-radius:8px;
+    padding:5px 5px 8px;
+    box-shadow:0 8px 18px rgba(0,0,0,0.35);
     z-index:2;
   }
   .crew-chief-card img{
     display:block;
     width:100%;
-    border-radius:4px;
+    border-radius:3px;
   }
   .crew-chief-card .cc-caption{
     font-family:'JetBrains Mono',monospace;
-    font-size:10.5px;
+    font-size:8px;
     color:var(--gunmetal);
     text-align:center;
-    letter-spacing:0.03em;
-    margin-top:6px;
+    letter-spacing:0.02em;
+    margin-top:4px;
     opacity:0.75;
   }
-  @media (min-width:900px){
-    .crew-chief-card{ display:block; }
+  @media (max-width:480px){
+    .crew-chief-card{ display:none; }
+    .chat-panel{
+      width:calc(100vw - 24px);
+      height:min(75vh, 640px);
+    }
   }
+
+  .chat-panel-close{
+    position:absolute;
+    top:10px; right:10px;
+    z-index:3;
+    width:26px; height:26px;
+    border-radius:50%;
+    border:0.5px solid var(--rivet-dark);
+    background:var(--panel-raised);
+    color:var(--chalk-dim);
+    cursor:pointer;
+    font-size:14px;
+    line-height:1;
+    display:flex;
+    align-items:center;
+    justify-content:center;
+  }
+  .chat-panel-close:hover{ color:var(--chalk); border-color:var(--orange); }
+
   .app{
     width:100%;
-    max-width:720px;
+    max-width:none;
+    height:100%;
     display:flex;
     flex-direction:column;
-    min-height:100vh;
+    overflow:hidden;
+    border-radius:12px;
+    box-shadow:0 16px 40px rgba(0,0,0,0.45);
     background:
       linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0) 120px),
       var(--gunmetal);
@@ -443,11 +502,14 @@
 </style>
 </head>
 <body>
-<div class="stage">
-  <div class="crew-chief-card">
-    <img src="/crew-chief.png" alt="Crew Chief, rucRak's mechanic mascot">
-    <div class="cc-caption">CREW CHIEF · ON DUTY</div>
-  </div>
+<div class="chat-widget" id="chatWidget">
+
+  <div class="chat-panel">
+    <div class="crew-chief-card">
+      <img src="/crew-chief.png" alt="Crew Chief, rucRak's mechanic mascot">
+      <div class="cc-caption">CREW CHIEF · ON DUTY</div>
+    </div>
+    <button class="chat-panel-close" id="chatPanelClose" type="button" title="Close chat" aria-label="Close chat">&times;</button>
 <div class="app">
 
   <div class="plate">
@@ -500,6 +562,12 @@
 
   <div class="footnote">Answers are grounded in rucRak documentation &amp; verified install transcripts. Safety-critical or undocumented items get flagged, not guessed.</div>
 </div>
+  </div>
+
+  <button class="chat-toggle" id="chatToggle" type="button" title="Chat with Crew Chief" aria-label="Open chat">
+    <span class="ping"></span>
+  </button>
+
 </div>
 
 <script>
@@ -776,8 +844,25 @@ input.addEventListener('input', ()=>{
   input.style.height = Math.min(input.scrollHeight, 120) + 'px';
 });
 
-// Greeting
-addMessage('bot', "Well hey there. Crew Chief's on the clock. Tell me what you're wrestlin' with — install, fitment, or somethin's rattlin' around back there — and let me know which model you've got: GRUNT or GUNNY. What's goin' on?");
+// Widget open/close — greeting fires the first time it's opened, not on page load
+const chatWidget = document.getElementById('chatWidget');
+const chatToggle = document.getElementById('chatToggle');
+const chatPanelClose = document.getElementById('chatPanelClose');
+let hasGreeted = false;
+
+function openChat(){
+  chatWidget.classList.add('open');
+  if(!hasGreeted){
+    hasGreeted = true;
+    addMessage('bot', "Well hey there. Crew Chief's on the clock. Tell me what you're wrestlin' with — install, fitment, or somethin's rattlin' around back there — and let me know which model you've got: GRUNT or GUNNY. What's goin' on?");
+  }
+  setTimeout(()=> input.focus(), 50);
+}
+function closeChat(){
+  chatWidget.classList.remove('open');
+}
+chatToggle.addEventListener('click', openChat);
+chatPanelClose.addEventListener('click', closeChat);
 </script>
 </body>
 </html>
