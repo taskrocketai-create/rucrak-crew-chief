@@ -526,6 +526,10 @@
     flex:1;
     min-height:0;
   }
+  /* Vapi's html-script-tag loader injects its own floating call button —
+     we have our own custom Talk button and voice UI, so hide theirs entirely. */
+  .vapi-btn{ display:none !important; }
+
   .voice-mode-view{
     display:none;
     flex:1;
@@ -601,7 +605,6 @@
     .gauge-needle, .typing span{animation:none !important;transition:none !important;}
   }
 </style>
-<script src="https://unpkg.com/@vapi-ai/web@latest/dist/vapi.js"></script>
 </head>
 <body>
 <div class="chat-widget" id="chatWidget">
@@ -996,49 +999,79 @@ const voiceBackTextBtn = document.getElementById('voiceBackTextBtn');
 let vapiInstance = null;
 let voiceCallActive = false;
 
-function getVapi(){
-  if(!vapiInstance){
-    if(!window.Vapi){
-      throw new Error("Vapi SDK didn't load (window.Vapi is missing) — check that the CDN script tag in <head> is reachable and not blocked.");
-    }
-    // window.Vapi comes from the CDN script tag loaded in <head>
-    vapiInstance = new window.Vapi(VAPI_PUBLIC_KEY);
+function attachVapiListeners(vapi){
+  vapi.on('call-start', ()=>{
+    voiceCallActive = true;
+    voiceStatus.textContent = 'Connected';
+    voiceOrb.className = 'voice-orb listening';
+    voiceSub.textContent = "Say what's going on — Crew Chief's listening.";
+  });
 
-    vapiInstance.on('call-start', ()=>{
-      voiceCallActive = true;
-      voiceStatus.textContent = 'Connected';
-      voiceOrb.className = 'voice-orb listening';
-      voiceSub.textContent = "Say what's going on — Crew Chief's listening.";
-    });
+  vapi.on('call-end', ()=>{
+    voiceCallActive = false;
+    voiceStatus.textContent = 'Call ended';
+    voiceOrb.className = 'voice-orb';
+    voiceSub.textContent = 'Tap Talk to start again, or switch back to typing.';
+    appEl.classList.remove('voice-active');
+  });
 
-    vapiInstance.on('call-end', ()=>{
-      voiceCallActive = false;
-      voiceStatus.textContent = 'Call ended';
-      voiceOrb.className = 'voice-orb';
-      voiceSub.textContent = 'Tap Talk to start again, or switch back to typing.';
-      appEl.classList.remove('voice-active');
-    });
+  vapi.on('speech-start', ()=>{
+    voiceStatus.textContent = 'Crew Chief is talking...';
+    voiceOrb.className = 'voice-orb speaking';
+  });
 
-    vapiInstance.on('speech-start', ()=>{
-      voiceStatus.textContent = 'Crew Chief is talking...';
-      voiceOrb.className = 'voice-orb speaking';
-    });
+  vapi.on('speech-end', ()=>{
+    voiceStatus.textContent = 'Listening...';
+    voiceOrb.className = 'voice-orb listening';
+  });
 
-    vapiInstance.on('speech-end', ()=>{
-      voiceStatus.textContent = 'Listening...';
-      voiceOrb.className = 'voice-orb listening';
-    });
-
-    vapiInstance.on('error', (err)=>{
-      console.error('Vapi error:', err);
-      const detail = (err && (err.message || (err.error && err.error.message) || JSON.stringify(err))) || 'unknown error';
-      voiceStatus.textContent = "Couldn't connect";
-      voiceSub.textContent = 'Error: ' + detail;
-      voiceOrb.className = 'voice-orb';
-    });
-  }
-  return vapiInstance;
+  vapi.on('error', (err)=>{
+    console.error('Vapi error:', err);
+    const detail = (err && (err.message || (err.error && err.error.message) || JSON.stringify(err))) || 'unknown error';
+    voiceStatus.textContent = "Couldn't connect";
+    voiceSub.textContent = 'Error: ' + detail;
+    voiceOrb.className = 'voice-orb';
+  });
 }
+
+// Vapi's raw @vapi-ai/web UMD build doesn't reliably expose window.Vapi when loaded via a
+// plain CDN script tag (confirmed dead end). This is Vapi's own officially-documented loader
+// for exactly this vanilla-JS/no-bundler scenario instead — loads async, calls vapiSDK.run()
+// on completion, and returns an instance with the same on()/start()/stop() API. We hide its
+// default floating button via the .vapi-btn CSS rule since we have our own custom UI.
+const vapiReadyPromise = new Promise((resolve, reject)=>{
+  const script = document.createElement('script');
+  script.src = "https://cdn.jsdelivr.net/gh/VapiAI/html-script-tag@latest/dist/assets/index.js";
+  script.defer = true;
+  script.async = true;
+  script.onload = function(){
+    try {
+      if(!window.vapiSDK){
+        reject(new Error('Vapi loader script loaded but window.vapiSDK is missing.'));
+        return;
+      }
+      const vapi = window.vapiSDK.run({
+        apiKey: VAPI_PUBLIC_KEY,
+        assistant: CREW_CHIEF_ASSISTANT_ID,
+        config: {} // default button hidden via CSS — we drive everything through our own UI
+      });
+      if(!vapi){
+        reject(new Error('vapiSDK.run() did not return an instance.'));
+        return;
+      }
+      attachVapiListeners(vapi);
+      vapiInstance = vapi;
+      resolve(vapi);
+    } catch(err){
+      reject(err);
+    }
+  };
+  script.onerror = function(){
+    reject(new Error('Vapi loader script failed to load from CDN — check network/ad-blockers.'));
+  };
+  const firstScript = document.getElementsByTagName('script')[0];
+  firstScript.parentNode.insertBefore(script, firstScript);
+});
 
 function startVoiceMode(){
   appEl.classList.add('voice-active');
@@ -1046,26 +1079,31 @@ function startVoiceMode(){
   voiceOrb.className = 'voice-orb';
   voiceSub.textContent = 'Hang on, getting Crew Chief on the line.';
 
-  try {
-    const vapi = getVapi();
-    // Assistant (model, voice, and the full system prompt) is managed entirely in the
-    // Vapi dashboard now — one single source of truth, no duplicated prompt to drift
-    // out of sync with. Edit the assistant there, not here.
-    const startResult = vapi.start(CREW_CHIEF_ASSISTANT_ID);
-    if(startResult && typeof startResult.catch === 'function'){
-      startResult.catch((err)=>{
-        console.error('Vapi start() rejected:', err);
-        voiceStatus.textContent = "Couldn't connect";
-        voiceSub.textContent = 'Error: ' + ((err && err.message) || 'call failed to start — see browser console for details.');
-        voiceOrb.className = 'voice-orb';
-      });
-    }
-  } catch(err){
-    console.error('Voice mode failed to start:', err);
-    voiceStatus.textContent = "Couldn't connect";
-    voiceSub.textContent = 'Error: ' + (err.message || 'something went wrong starting the call.');
-    voiceOrb.className = 'voice-orb';
-  }
+  vapiReadyPromise
+    .then((vapi)=>{
+      // Assistant (model, voice, and the full system prompt) is managed entirely in the
+      // Vapi dashboard now — one single source of truth, no duplicated prompt to drift
+      // out of sync with. Edit the assistant there, not here.
+      // vapiSDK.run() above only sets up the instance — it doesn't start a call on its own,
+      // so we always explicitly start one here in response to the Talk press.
+      if(!voiceCallActive){
+        const startResult = vapi.start(CREW_CHIEF_ASSISTANT_ID);
+        if(startResult && typeof startResult.catch === 'function'){
+          startResult.catch((err)=>{
+            console.error('Vapi start() rejected:', err);
+            voiceStatus.textContent = "Couldn't connect";
+            voiceSub.textContent = 'Error: ' + ((err && err.message) || 'call failed to start — see browser console for details.');
+            voiceOrb.className = 'voice-orb';
+          });
+        }
+      }
+    })
+    .catch((err)=>{
+      console.error('Voice mode failed to start:', err);
+      voiceStatus.textContent = "Couldn't connect";
+      voiceSub.textContent = 'Error: ' + (err.message || 'something went wrong starting the call.');
+      voiceOrb.className = 'voice-orb';
+    });
 }
 
 function endVoiceMode(){
