@@ -998,6 +998,9 @@ let voiceCallActive = false;
 
 function getVapi(){
   if(!vapiInstance){
+    if(!window.Vapi){
+      throw new Error("Vapi SDK didn't load (window.Vapi is missing) — check that the CDN script tag in <head> is reachable and not blocked.");
+    }
     // window.Vapi comes from the CDN script tag loaded in <head>
     vapiInstance = new window.Vapi(VAPI_PUBLIC_KEY);
 
@@ -1028,8 +1031,9 @@ function getVapi(){
 
     vapiInstance.on('error', (err)=>{
       console.error('Vapi error:', err);
+      const detail = (err && (err.message || (err.error && err.error.message) || JSON.stringify(err))) || 'unknown error';
       voiceStatus.textContent = "Couldn't connect";
-      voiceSub.textContent = 'Something went wrong starting the call — check the browser console, or try switching back to typing.';
+      voiceSub.textContent = 'Error: ' + detail;
       voiceOrb.className = 'voice-orb';
     });
   }
@@ -1042,11 +1046,26 @@ function startVoiceMode(){
   voiceOrb.className = 'voice-orb';
   voiceSub.textContent = 'Hang on, getting Crew Chief on the line.';
 
-  const vapi = getVapi();
-  // Assistant (model, voice, and the full system prompt) is managed entirely in the
-  // Vapi dashboard now — one single source of truth, no duplicated prompt to drift
-  // out of sync with. Edit the assistant there, not here.
-  vapi.start(CREW_CHIEF_ASSISTANT_ID);
+  try {
+    const vapi = getVapi();
+    // Assistant (model, voice, and the full system prompt) is managed entirely in the
+    // Vapi dashboard now — one single source of truth, no duplicated prompt to drift
+    // out of sync with. Edit the assistant there, not here.
+    const startResult = vapi.start(CREW_CHIEF_ASSISTANT_ID);
+    if(startResult && typeof startResult.catch === 'function'){
+      startResult.catch((err)=>{
+        console.error('Vapi start() rejected:', err);
+        voiceStatus.textContent = "Couldn't connect";
+        voiceSub.textContent = 'Error: ' + ((err && err.message) || 'call failed to start — see browser console for details.');
+        voiceOrb.className = 'voice-orb';
+      });
+    }
+  } catch(err){
+    console.error('Voice mode failed to start:', err);
+    voiceStatus.textContent = "Couldn't connect";
+    voiceSub.textContent = 'Error: ' + (err.message || 'something went wrong starting the call.');
+    voiceOrb.className = 'voice-orb';
+  }
 }
 
 function endVoiceMode(){
