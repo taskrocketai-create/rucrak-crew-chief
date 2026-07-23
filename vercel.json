@@ -5,6 +5,9 @@
     },
     "api/health.js": {
       "maxDuration": 5
+    },
+    "api/analyze-photo.js": {
+      "maxDuration": 30
     }
   }
 }

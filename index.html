@@ -623,6 +623,29 @@
   }
   .voice-back-text:hover{ color:var(--chalk); border-color:var(--orange); }
 
+  .voice-photo-menu-wrap{ position:relative; }
+  .voice-photo-btn{
+    font-family:'Inter',sans-serif;
+    font-size:12.5px;
+    font-weight:500;
+    padding:9px 14px;
+    border-radius:6px;
+    cursor:pointer;
+    background:none;
+    color:var(--chalk-dim);
+    border:1px solid var(--rivet-dark);
+  }
+  .voice-photo-btn:hover{ color:var(--chalk); border-color:var(--orange); }
+  .voice-photo-status{
+    min-height:16px;
+    font-size:12px;
+    color:var(--chalk-dim);
+    font-family:'JetBrains Mono',monospace;
+  }
+  .voice-photo-status.working{ color:var(--amber); }
+  .voice-photo-status.done{ color:var(--good-green); }
+  .voice-photo-status.error{ color:#E24B4A; }
+
   ::-webkit-scrollbar{width:8px;}
   ::-webkit-scrollbar-thumb{background:var(--rivet-dark);border-radius:4px;}
 
@@ -706,8 +729,18 @@
     </button>
     <div class="voice-sub" id="voiceSub">Crew Chief will start talking as soon as you tap in.</div>
     <div class="voice-actions" id="voiceActiveActions" style="display:none;">
+      <input type="file" id="voiceFileInputCamera" accept="image/*" capture="environment" style="display:none">
+      <input type="file" id="voiceFileInputGallery" accept="image/*" style="display:none">
+      <div class="voice-photo-menu-wrap">
+        <button class="voice-photo-btn" id="voicePhotoBtn" type="button" title="Send a fitment photo">📷 Send a photo</button>
+        <div class="attach-menu" id="voicePhotoMenu">
+          <button type="button" id="voicePhotoMenuCamera">📷 Take Photo</button>
+          <button type="button" id="voicePhotoMenuGallery">🖼️ Choose from Library</button>
+        </div>
+      </div>
       <button class="voice-end" id="voiceEndBtn" type="button">End call</button>
     </div>
+    <div class="voice-photo-status" id="voicePhotoStatus"></div>
     <button class="voice-back-text" id="voiceBackTextBtn" type="button">Switch to typing</button>
   </div>
 
@@ -786,6 +819,98 @@ attachMenuGallery.addEventListener('click', ()=>{
   fileInputGallery.click();
 });
 
+// --- voice-mode photo: same take/choose pattern, but instead of queueing for a text
+// message, the photo goes straight to analysis and gets injected into the live call. ---
+const voicePhotoBtn = document.getElementById('voicePhotoBtn');
+const voicePhotoMenu = document.getElementById('voicePhotoMenu');
+const voicePhotoMenuCamera = document.getElementById('voicePhotoMenuCamera');
+const voicePhotoMenuGallery = document.getElementById('voicePhotoMenuGallery');
+const voiceFileInputCamera = document.getElementById('voiceFileInputCamera');
+const voiceFileInputGallery = document.getElementById('voiceFileInputGallery');
+const voicePhotoStatus = document.getElementById('voicePhotoStatus');
+
+voicePhotoBtn.addEventListener('click', (e)=>{
+  e.stopPropagation();
+  voicePhotoMenu.classList.toggle('show');
+});
+document.addEventListener('click', ()=> voicePhotoMenu.classList.remove('show'));
+voicePhotoMenu.addEventListener('click', (e)=> e.stopPropagation());
+
+voicePhotoMenuCamera.addEventListener('click', ()=>{
+  voicePhotoMenu.classList.remove('show');
+  voiceFileInputCamera.click();
+});
+voicePhotoMenuGallery.addEventListener('click', ()=>{
+  voicePhotoMenu.classList.remove('show');
+  voiceFileInputGallery.click();
+});
+
+function setVoicePhotoStatus(text, kind){
+  voicePhotoStatus.textContent = text;
+  voicePhotoStatus.className = 'voice-photo-status' + (kind ? ' ' + kind : '');
+}
+
+async function analyzeVoicePhoto(file){
+  if(!voiceCallActive || !vapiInstance){
+    setVoicePhotoStatus("No active call to send that to — start talking first.", 'error');
+    return;
+  }
+  setVoicePhotoStatus('Uploading photo...', 'working');
+  let imgData;
+  try {
+    imgData = await compressImageFile(file);
+  } catch(err){
+    setVoicePhotoStatus(err.message || 'Could not read that photo.', 'error');
+    return;
+  }
+
+  setVoicePhotoStatus("Crew Chief's looking at it...", 'working');
+  try {
+    const response = await fetch('/api/analyze-photo', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        images: [{ media_type: imgData.mediaType, data: imgData.base64 }]
+      })
+    });
+    const data = await response.json();
+    if(!response.ok){
+      throw new Error((data && data.error) || `Server returned ${response.status}`);
+    }
+    const analysisText = (data.text || '').trim();
+    if(!analysisText){
+      throw new Error('Empty analysis returned.');
+    }
+
+    // Inject the analysis into the live call as context — the assistant on the call
+    // (same Crew Chief persona/voice) will read this and relay it naturally in its
+    // own words on its next turn, without the call ending or restarting.
+    vapiInstance.send({
+      type: 'add-message',
+      message: {
+        role: 'system',
+        content: `The customer just sent a photo during this call. Automated fitment analysis of that photo: ${analysisText}\n\nRelay this to the customer naturally in your own voice and style right now — don't read it verbatim or robotically, explain it like you normally would in conversation.`
+      }
+    });
+    setVoicePhotoStatus('Sent — Crew Chief will bring it up.', 'done');
+    setTimeout(()=> setVoicePhotoStatus('', ''), 4000);
+  } catch(err){
+    console.error('Voice photo analysis failed:', err);
+    setVoicePhotoStatus('Error: ' + (err.message || 'photo analysis failed.'), 'error');
+  }
+}
+
+voiceFileInputCamera.addEventListener('change', (e)=>{
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if(file) analyzeVoicePhoto(file);
+});
+voiceFileInputGallery.addEventListener('change', (e)=>{
+  const file = e.target.files && e.target.files[0];
+  e.target.value = '';
+  if(file) analyzeVoicePhoto(file);
+});
+
 const MAX_IMAGES = 6; // cap so a big multi-select doesn't blow up the request size
 
 function renderAttachThumbs(){
@@ -818,6 +943,38 @@ function renderAttachThumbs(){
     : 'Photo attached — send with your message';
 }
 
+// Shared by both text-mode attach and voice-mode mid-call photo analysis —
+// shrinks to a reasonable max dimension so uploads stay fast/cheap regardless
+// of how large the original phone photo is. Returns a Promise.
+function compressImageFile(file){
+  return new Promise((resolve, reject)=>{
+    if(!file.type.startsWith('image/')){
+      reject(new Error(`"${file.name}" doesn't look like a photo.`));
+      return;
+    }
+    const reader = new FileReader();
+    reader.onload = (ev)=>{
+      const img = new Image();
+      img.onload = ()=>{
+        const MAX_DIM = 1200;
+        let w = img.width, h = img.height;
+        if(w > h && w > MAX_DIM){ h = Math.round(h * (MAX_DIM / w)); w = MAX_DIM; }
+        else if(h >= w && h > MAX_DIM){ w = Math.round(w * (MAX_DIM / h)); h = MAX_DIM; }
+        const canvas = document.createElement('canvas');
+        canvas.width = w; canvas.height = h;
+        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
+        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+        const base64 = dataUrl.split(',')[1];
+        resolve({ base64, mediaType: 'image/jpeg', previewSrc: dataUrl });
+      };
+      img.onerror = ()=> reject(new Error('Could not read that image file.'));
+      img.src = ev.target.result;
+    };
+    reader.onerror = ()=> reject(new Error('Could not read that file.'));
+    reader.readAsDataURL(file);
+  });
+}
+
 function handleSelectedFiles(fileList, inputEl){
   const files = Array.from(fileList || []);
   if(!files.length) return;
@@ -834,32 +991,15 @@ function handleSelectedFiles(fileList, inputEl){
   }
 
   toProcess.forEach(file=>{
-    if(!file.type.startsWith('image/')){
-      addMessage('bot', `"${file.name}" doesn't look like a photo — skipping that one.`);
-      return;
-    }
-    const reader = new FileReader();
-    reader.onload = (ev)=>{
-      const img = new Image();
-      img.onload = ()=>{
-        // Shrink to a reasonable max dimension so the upload stays fast and cheap,
-        // regardless of how large the original phone photo is.
-        const MAX_DIM = 1200;
-        let w = img.width, h = img.height;
-        if(w > h && w > MAX_DIM){ h = Math.round(h * (MAX_DIM / w)); w = MAX_DIM; }
-        else if(h >= w && h > MAX_DIM){ w = Math.round(w * (MAX_DIM / h)); h = MAX_DIM; }
-        const canvas = document.createElement('canvas');
-        canvas.width = w; canvas.height = h;
-        canvas.getContext('2d').drawImage(img, 0, 0, w, h);
-        const dataUrl = canvas.toDataURL('image/jpeg', 0.82);
-        const base64 = dataUrl.split(',')[1];
-        pendingImages.push({ base64, mediaType: 'image/jpeg', previewSrc: dataUrl });
+    compressImageFile(file)
+      .then((imgData)=>{
+        pendingImages.push(imgData);
         attachPreview.classList.add('show');
         renderAttachThumbs();
-      };
-      img.src = ev.target.result;
-    };
-    reader.readAsDataURL(file);
+      })
+      .catch((err)=>{
+        addMessage('bot', err.message || 'Had trouble reading that photo — skipping it.');
+      });
   });
   inputEl.value = ''; // allow re-selecting the same file(s) later
 }
