@@ -72,32 +72,37 @@
 
   .crew-chief-card{
     position:absolute;
-    top:-58px;
-    left:-26px;
-    width:110px;
-    transform:rotate(-6deg);
-    background:var(--chalk);
-    border-radius:8px;
-    padding:5px 5px 8px;
-    box-shadow:0 8px 18px rgba(0,0,0,0.35);
+    bottom:0;
+    left:-150px;
+    width:170px;
     z-index:2;
+    pointer-events:none;
   }
   .crew-chief-card img{
     display:block;
     width:100%;
-    border-radius:3px;
+    filter:drop-shadow(0 10px 14px rgba(0,0,0,0.45));
   }
   .crew-chief-card .cc-caption{
+    position:absolute;
+    bottom:6px;
+    left:50%;
+    transform:translateX(-50%);
     font-family:'JetBrains Mono',monospace;
     font-size:8px;
-    color:var(--gunmetal);
+    color:var(--chalk);
+    background:rgba(29,32,36,0.75);
+    border:0.5px solid var(--rivet-dark);
+    padding:2px 7px;
+    border-radius:3px;
     text-align:center;
     letter-spacing:0.02em;
-    margin-top:4px;
-    opacity:0.75;
+    white-space:nowrap;
+  }
+  @media (max-width:620px){
+    .crew-chief-card{ display:none; }
   }
   @media (max-width:480px){
-    .crew-chief-card{ display:none; }
     .chat-panel{
       width:calc(100vw - 24px);
       height:min(75vh, 640px);
