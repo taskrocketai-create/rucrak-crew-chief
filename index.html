@@ -39,21 +39,47 @@
   }
 
   .chat-toggle{
-    width:64px;
-    height:64px;
-    border-radius:50%;
-    border:2px solid var(--orange);
-    background:var(--panel-raised) url('/crew-chief.png') center 18% / 180% no-repeat;
+    width:110px;
+    height:172px;
+    border:none;
+    background:transparent;
     cursor:pointer;
-    box-shadow:0 6px 18px rgba(0,0,0,0.4);
     position:relative;
     flex:0 0 auto;
+    padding:0;
   }
-  .chat-toggle:hover{ transform:scale(1.04); }
+  .chat-toggle img{
+    display:block;
+    width:100%;
+    height:100%;
+    object-fit:contain;
+    object-position:bottom;
+    filter:drop-shadow(0 8px 16px rgba(0,0,0,0.45));
+  }
+  .chat-toggle:hover img{ transform:scale(1.04); }
+  .chat-toggle .bubble-cta{
+    position:absolute;
+    top:2px;
+    left:-6px;
+    background:var(--orange);
+    color:var(--gunmetal);
+    font-family:'Inter',sans-serif;
+    font-weight:600;
+    font-size:11.5px;
+    padding:6px 10px;
+    border-radius:12px 12px 12px 3px;
+    white-space:nowrap;
+    box-shadow:0 4px 10px rgba(0,0,0,0.35);
+    animation:cta-bob 2.4s ease-in-out infinite;
+  }
+  @keyframes cta-bob{
+    0%,100%{ transform:translateY(0); }
+    50%{ transform:translateY(-4px); }
+  }
   .chat-toggle .ping{
     position:absolute;
-    top:-2px; right:-2px;
-    width:14px; height:14px;
+    top:36px; right:8px;
+    width:13px; height:13px;
     border-radius:50%;
     background:var(--good-green);
     border:2px solid var(--gunmetal);
@@ -570,6 +596,8 @@
   </div>
 
   <button class="chat-toggle" id="chatToggle" type="button" title="Chat with Crew Chief" aria-label="Open chat">
+    <span class="bubble-cta">Need help?</span>
+    <img src="/crew-chief.png" alt="Crew Chief">
     <span class="ping"></span>
   </button>
 
