@@ -683,7 +683,7 @@
   </div>
 
   <button class="chat-toggle" id="chatToggle" type="button" title="Chat with Crew Chief" aria-label="Open chat">
-    <span class="bubble-cta">Need help?</span>
+    <span class="bubble-cta">Talk to me →</span>
     <img src="/crew-chief.png" alt="Crew Chief">
     <span class="ping"></span>
   </button>
@@ -976,10 +976,16 @@ function openChat(){
     hasGreeted = true;
     addMessage('bot', "Well hey there. Crew Chief's on the clock. Tell me what you're wrestlin' with — install, fitment, or somethin's rattlin' around back there — and let me know which model you've got: GRUNT or GUNNY. What's goin' on?");
   }
-  setTimeout(()=> input.focus(), 50);
+  // Voice leads now — text is the fallback, reached via "Switch to typing" inside voice mode.
+  startVoiceMode();
 }
 function closeChat(){
   chatWidget.classList.remove('open');
+  // Don't leave a call running in the background after the panel's closed.
+  if(voiceCallActive && vapiInstance){
+    vapiInstance.stop();
+  }
+  appEl.classList.remove('voice-active');
 }
 chatToggle.addEventListener('click', openChat);
 chatPanelClose.addEventListener('click', closeChat);
