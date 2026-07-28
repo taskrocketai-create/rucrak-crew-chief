@@ -15,6 +15,9 @@
     "api/log-marketing-info.js": {
       "maxDuration": 10
     },
+    "api/log-promo-optin.js": {
+      "maxDuration": 10
+    },
     "api/weekly-report.js": {
       "maxDuration": 30
     }

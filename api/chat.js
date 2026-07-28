@@ -13,7 +13,7 @@
 //                            you should set this before going live.
 
 const SYSTEM_PROMPT = require('./_prompt.js');
-const { handleEscalation, logMarketingInfo } = require('./_notify.js');
+const { handleEscalation, logMarketingInfo, logPromoOptin } = require('./_notify.js');
 
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 
@@ -45,6 +45,30 @@ function extractEscalation(replyText) {
   return { cleanText, escalation };
 }
 
+// --- Promo opt-in marker parsing ---------------------------------------------
+// Same pattern again, third tag:
+//   @@PROMO_OPTIN@@{"contactMethod":"...","contactType":"email or phone"}@@END@@
+const PROMO_OPTIN_MARKER_RE = /@@PROMO_OPTIN@@(.*?)@@END@@/s;
+
+function extractPromoOptin(replyText) {
+  const match = replyText.match(PROMO_OPTIN_MARKER_RE);
+  if (!match) return { cleanText: replyText, promoOptin: null };
+
+  const cleanText = replyText.replace(PROMO_OPTIN_MARKER_RE, "").trim();
+  let promoOptin = null;
+  try {
+    const parsed = JSON.parse(match[1]);
+    if (parsed.contactMethod) {
+      promoOptin = {
+        contactMethod: parsed.contactMethod,
+        contactType: parsed.contactType || null
+      };
+    }
+  } catch (err) {
+    console.error("Failed to parse promo-optin marker JSON (non-fatal):", err.message, "raw:", match[1]);
+  }
+  return { cleanText, promoOptin };
+}
 // --- Marketing info marker parsing -------------------------------------------
 // Same pattern as the escalation marker, different tag:
 //   @@CUSTOMER_INFO@@{"vehicle":"...","region":"...","referralSource":"...","useCase":"..."}@@END@@
@@ -265,7 +289,14 @@ module.exports = async (req, res) => {
       logMarketingInfo({ channel: "text", ...customerInfo }).catch(() => {});
     }
 
-    const replyText = afterCustomerInfo || "Let me get you the right answer on that — hang tight.";
+    // And the promo opt-in marker, chained the same way — any combination
+    // of these three can appear in a single reply, or none at all.
+    const { cleanText: afterPromoOptin, promoOptin } = extractPromoOptin(afterCustomerInfo);
+    if (promoOptin) {
+      logPromoOptin({ channel: "text", ...promoOptin }).catch(() => {});
+    }
+
+    const replyText = afterPromoOptin || "Let me get you the right answer on that — hang tight.";
 
     // Fire-and-forget: log that this call was handled, without delaying the reply.
     const userMessages = trimmedMessages.filter((m) => m.role === "user");

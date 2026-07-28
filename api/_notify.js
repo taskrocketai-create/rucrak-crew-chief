@@ -133,4 +133,36 @@ async function logMarketingInfo({ channel, vehicle, region, referralSource, useC
   }
 }
 
-module.exports = { sendEscalationEmail, logEscalation, handleEscalation, logMarketingInfo };
+// --- Promotional list opt-in logging -------------------------------------
+// Distinct from logMarketingInfo above — this one requires explicit,
+// affirmative consent (checked in the prompt, not here) and stores real
+// contact info, since it's for an actual promotional contact list. Separate
+// table on purpose, so it's never accidentally mixed with the anonymous
+// aggregate marketing-context data.
+async function logPromoOptin({ channel, contactMethod, contactType }) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+  if (!supabaseUrl || !supabaseKey) return; // logging not configured — skip quietly
+  if (!contactMethod) return; // nothing to log without an actual contact value
+
+  try {
+    await fetch(`${supabaseUrl}/rest/v1/rucrak_promo_optins`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: supabaseKey,
+        Authorization: `Bearer ${supabaseKey}`,
+        Prefer: "return=minimal"
+      },
+      body: JSON.stringify([{
+        channel,
+        contact_method: contactMethod,
+        contact_type: contactType || null
+      }])
+    });
+  } catch (err) {
+    console.error("Promo opt-in Supabase logging failed (non-fatal):", err.message);
+  }
+}
+
+module.exports = { sendEscalationEmail, logEscalation, handleEscalation, logMarketingInfo, logPromoOptin };

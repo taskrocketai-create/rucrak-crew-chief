@@ -77,3 +77,29 @@ create index if not exists rucrak_marketing_notes_created_at_idx on rucrak_marke
 alter table rucrak_marketing_notes enable row level security;
 -- Same RLS approach as the other two tables above.
 
+-- ---------------------------------------------------------------------------
+-- Promotional list opt-ins (added later): DIFFERENT from marketing_notes
+-- above on purpose — this one holds real contact info (email or phone),
+-- and only ever gets a row when a customer gave clear, explicit consent to
+-- be contacted for deals/promotions AND provided that contact info in the
+-- same exchange. See the prompt's "PROMOTIONAL LIST OPT-IN" section for the
+-- consent rules Crew Chief follows before this ever gets called.
+
+create table if not exists rucrak_promo_optins (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  channel text,             -- 'text' or 'voice'
+  contact_method text,      -- the actual email address or phone number given
+  contact_type text          -- 'email' or 'phone'
+);
+
+create index if not exists rucrak_promo_optins_created_at_idx on rucrak_promo_optins (created_at desc);
+
+alter table rucrak_promo_optins enable row level security;
+-- Same RLS approach as the other tables. Given this table holds real PII
+-- (unlike the other three, which are either anonymous or purely
+-- operational), treat exports/access from this one with extra care —
+-- standard email/SMS marketing consent and unsubscribe obligations apply
+-- to whatever you actually send to these contacts later (this table only
+-- captures the opt-in itself, not anything about sending).
+
