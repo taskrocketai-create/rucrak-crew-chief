@@ -13,8 +13,39 @@
 //                            you should set this before going live.
 
 const SYSTEM_PROMPT = require('./_prompt.js');
+const { handleEscalation } = require('./_notify.js');
 
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
+
+// --- Escalation marker parsing -----------------------------------------------
+// Text mode has no tool-calling wired up (see api/log-escalation.js for the
+// voice-mode equivalent, which uses a real Vapi tool instead). When the model
+// decides to escalate, it appends a line like:
+//   @@ESCALATE@@{"question":"...","customerName":"...","customerContact":"..."}@@END@@
+// This strips that line out before the customer ever sees it, and returns the
+// parsed details (or null if no escalation marker was present).
+const ESCALATION_MARKER_RE = /@@ESCALATE@@(.*?)@@END@@/s;
+
+function extractEscalation(replyText) {
+  const match = replyText.match(ESCALATION_MARKER_RE);
+  if (!match) return { cleanText: replyText, escalation: null };
+
+  const cleanText = replyText.replace(ESCALATION_MARKER_RE, "").trim();
+  let escalation = null;
+  try {
+    const parsed = JSON.parse(match[1]);
+    escalation = {
+      question: parsed.question || "(not specified)",
+      customerName: parsed.customerName || null,
+      customerContact: parsed.customerContact || null
+    };
+  } catch (err) {
+    console.error("Failed to parse escalation marker JSON (non-fatal):", err.message, "raw:", match[1]);
+  }
+  return { cleanText, escalation };
+}
+// ----------------------------------------------------------------------------
+
 
 // --- Call log ---------------------------------------------------------------
 // Best-effort record of "a question got handled" — nothing fancier than that.
@@ -191,7 +222,15 @@ module.exports = async (req, res) => {
     const textBlocks = (data.content || [])
       .filter((b) => b.type === "text")
       .map((b) => b.text);
-    const replyText = textBlocks.join("\n").trim() || "Hang on, lost my train of thought — say that again?";
+    const rawReplyText = textBlocks.join("\n").trim() || "Hang on, lost my train of thought — say that again?";
+
+    // Strip any escalation marker before the customer ever sees it, and fire
+    // the notification pipeline (email + Supabase log) if one was present.
+    const { cleanText, escalation } = extractEscalation(rawReplyText);
+    const replyText = cleanText || "Let me get you the right answer on that — hang tight.";
+    if (escalation) {
+      handleEscalation({ channel: "text", ...escalation }).catch(() => {});
+    }
 
     // Fire-and-forget: log that this call was handled, without delaying the reply.
     const userMessages = trimmedMessages.filter((m) => m.role === "user");

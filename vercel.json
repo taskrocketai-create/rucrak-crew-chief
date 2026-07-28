@@ -8,6 +8,9 @@
     },
     "api/analyze-photo.js": {
       "maxDuration": 30
+    },
+    "api/log-escalation.js": {
+      "maxDuration": 10
     }
   }
 }

@@ -70,6 +70,67 @@ you said you just want a record, not a whole analytics system. If you
 later want a simple count-by-week view or similar, that's a small add-on
 we can build when you actually want it.
 
+## Escalation pipeline: when Crew Chief genuinely doesn't know something
+
+Crew Chief is instructed to answer confidently from its own knowledge first,
+and only escalate after genuinely exhausting attempts — it truly doesn't
+know, can't understand the customer, or the customer can't understand its
+explanation. When that happens, it collects the customer's name/contact if
+they're willing, and this pipeline notifies Jason so he doesn't have to comb
+through every conversation to find the ones that actually needed him. This is
+also the mechanism for Crew Chief's knowledge to grow over time — gaps
+surface to Jason, who decides what belongs in the instructions going
+forward. It's a human-reviewed feedback loop, not the model retraining
+itself (Claude doesn't support that through the API).
+
+**Text mode** (`api/chat.js`) detects an escalation by looking for a specific
+marker the model is instructed to append to its reply when it decides to
+escalate — that marker is stripped before the customer ever sees it.
+
+**Voice mode** works differently, since it runs on Vapi's own infrastructure
+rather than this code: it requires a **Custom Tool** configured directly in
+your Vapi dashboard that calls a new endpoint, `api/log-escalation.js`, which
+Vapi invokes directly when the assistant decides to escalate.
+
+**Setup — three parts:**
+
+**1. Resend (for the actual email notification)**
+- Sign up at resend.com (free tier is plenty for this volume)
+- Verify the **rucrak.com domain** (Resend gives you a few DNS records —
+  TXT/CNAME — to add wherever rucrak.com's DNS is managed). This doesn't
+  create a real mailbox; it just proves you control the domain, so you can
+  send FROM any address on it (e.g. `crewchief@rucrak.com`) without that
+  address needing to exist anywhere as an actual inbox.
+- Grab your Resend API key
+- In Vercel → Settings → Environment Variables, add:
+
+| Key | Value |
+|---|---|
+| `RESEND_API_KEY` | your Resend API key |
+| `JASON_NOTIFY_EMAIL` | the real inbox that should receive these (Jason's actual email) |
+| `CREWCHIEF_FROM_EMAIL` | optional — defaults to `crewchief@rucrak.com` if unset |
+
+**2. Supabase (for the distinct escalation log)**
+- Run the second half of `supabase_setup.sql` (already includes both tables)
+  — creates `rucrak_chief_escalations`, separate from the regular call log
+- Uses the same `SUPABASE_URL`/`SUPABASE_SERVICE_KEY` env vars as the
+  existing call log — if you've already set those up, nothing new needed here
+- Has a `resolved` column, defaulting to false, so you can flip it once
+  you've actually dealt with one and filter down to what's still outstanding
+
+**3. Vapi Custom Tool (voice mode only — text mode needs no extra setup beyond the above)**
+- In the Vapi dashboard, go to **Tools** → create a new tool
+- Name it exactly `flag_escalation`
+- Parameters: `question` (string, required), `customerName` (string, optional), `customerContact` (string, optional)
+- Server URL: `https://rucrak-crew-chief.vercel.app/api/log-escalation`
+- Attach this tool to the Crew Chief assistant (Tools tab on the assistant itself)
+
+**If you skip any of this:** nothing breaks. Every piece checks for its
+required environment variables/configuration before doing anything, and
+quietly no-ops if they're missing — Crew Chief still escalates
+conversationally (telling the customer it'll follow up), it just won't
+actually notify or log anywhere until this is wired up.
+
 **How it works:** the customer taps the camera button, takes or picks a
 photo showing their spare tire and hitch receiver, and sends it — with or
 without a text question alongside it. Crew Chief reads the photo using the

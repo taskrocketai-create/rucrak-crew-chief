@@ -26,3 +26,29 @@ alter table rucrak_chief_calls enable row level security;
 -- what api/chat.js uses, and it's what you'll use when you look at the
 -- table in the Supabase dashboard (dashboard access uses elevated
 -- permissions, separate from RLS policies).
+
+-- ---------------------------------------------------------------------------
+-- Escalation pipeline (added later): when Crew Chief genuinely can't answer
+-- something — in text (api/chat.js) or voice (api/log-escalation.js, called
+-- directly by Vapi as a tool) — it logs here AND (if RESEND_API_KEY and
+-- JASON_NOTIFY_EMAIL are set) fires an email so Jason doesn't have to comb
+-- through every conversation to find the ones that actually needed him.
+
+create table if not exists rucrak_chief_escalations (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  channel text,                -- 'text' or 'voice'
+  question text,                -- what Crew Chief couldn't resolve
+  customer_name text,           -- null if not given
+  customer_contact text,        -- null if not given (phone or email, whatever they gave)
+  resolved boolean default false -- flip to true once Jason's dealt with it, so
+                                  -- you can filter down to what's still outstanding
+);
+
+create index if not exists rucrak_chief_escalations_created_at_idx on rucrak_chief_escalations (created_at desc);
+create index if not exists rucrak_chief_escalations_resolved_idx on rucrak_chief_escalations (resolved) where resolved = false;
+
+alter table rucrak_chief_escalations enable row level security;
+-- Same RLS approach as rucrak_chief_calls above — locked down, service role
+-- key (used by both api/chat.js and api/log-escalation.js) bypasses it.
+
