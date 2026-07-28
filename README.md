@@ -152,6 +152,39 @@ the server independently caps any image at ~2.2MB decoded as a defense
 against abuse — but if you ever raise the client-side compression settings
 significantly, keep this ceiling in mind.
 
+## Weekly report to Jason
+
+Every Monday, `api/weekly-report.js` runs automatically (via Vercel Cron —
+already configured in `vercel.json`, no separate setup needed beyond the env
+vars below) and emails Jason a short summary: how many conversations Crew
+Chief handled that week, how many escalations happened and how many are
+still unresolved, and the top vehicles/regions/referral sources/use cases
+from the marketing notes table. Claude writes 2-4 concrete suggestions based
+on that week's actual data — and is explicitly told to say the data's too
+thin to say anything meaningful yet rather than force an insight out of a
+slow week.
+
+**Schedule:** Mondays at 12:00 UTC (roughly 7-8am Eastern depending on
+daylight saving — cron schedules on Vercel are UTC-only and don't
+auto-adjust for DST). To change the day/time, edit the `schedule` field
+under `crons` in `vercel.json` and redeploy — cron changes require a
+redeploy to take effect, they can't be changed live.
+
+**Requires the same env vars as the rest of the pipeline** — if
+`ANTHROPIC_API_KEY`, `SUPABASE_URL`/`SUPABASE_SERVICE_KEY`, or
+`RESEND_API_KEY`/`JASON_NOTIFY_EMAIL` are missing, it quietly skips whatever
+step it can't do rather than erroring loudly. A missing weekly report is a
+lot less disruptive than a broken customer-facing feature, so this follows
+the same philosophy as everything else here.
+
+**Testing it without waiting for Monday:** you can trigger it manually by
+visiting `https://rucrak-crew-chief.vercel.app/api/weekly-report` directly
+in a browser (or hit it with curl) — it'll run immediately rather than
+waiting for the schedule. If you've set a `CRON_SECRET` env var yourself
+(Vercel sets one automatically for actual cron-triggered requests, but
+manual testing won't have it), you'll need to either temporarily unset that
+check or add the matching Authorization header to your test request.
+
 ## Run the tests yourself (optional, but reassuring)
 
 ```bash
