@@ -13,7 +13,7 @@
 //                            you should set this before going live.
 
 const SYSTEM_PROMPT = require('./_prompt.js');
-const { handleEscalation } = require('./_notify.js');
+const { handleEscalation, logMarketingInfo } = require('./_notify.js');
 
 const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
 
@@ -43,6 +43,33 @@ function extractEscalation(replyText) {
     console.error("Failed to parse escalation marker JSON (non-fatal):", err.message, "raw:", match[1]);
   }
   return { cleanText, escalation };
+}
+
+// --- Marketing info marker parsing -------------------------------------------
+// Same pattern as the escalation marker, different tag:
+//   @@CUSTOMER_INFO@@{"vehicle":"...","region":"...","referralSource":"...","useCase":"..."}@@END@@
+// Any field not actually known should be omitted by the model rather than
+// guessed — this just passes through whatever's present.
+const CUSTOMER_INFO_MARKER_RE = /@@CUSTOMER_INFO@@(.*?)@@END@@/s;
+
+function extractCustomerInfo(replyText) {
+  const match = replyText.match(CUSTOMER_INFO_MARKER_RE);
+  if (!match) return { cleanText: replyText, customerInfo: null };
+
+  const cleanText = replyText.replace(CUSTOMER_INFO_MARKER_RE, "").trim();
+  let customerInfo = null;
+  try {
+    const parsed = JSON.parse(match[1]);
+    customerInfo = {
+      vehicle: parsed.vehicle || null,
+      region: parsed.region || null,
+      referralSource: parsed.referralSource || null,
+      useCase: parsed.useCase || null
+    };
+  } catch (err) {
+    console.error("Failed to parse customer-info marker JSON (non-fatal):", err.message, "raw:", match[1]);
+  }
+  return { cleanText, customerInfo };
 }
 // ----------------------------------------------------------------------------
 
@@ -226,11 +253,19 @@ module.exports = async (req, res) => {
 
     // Strip any escalation marker before the customer ever sees it, and fire
     // the notification pipeline (email + Supabase log) if one was present.
-    const { cleanText, escalation } = extractEscalation(rawReplyText);
-    const replyText = cleanText || "Let me get you the right answer on that — hang tight.";
+    const { cleanText: afterEscalation, escalation } = extractEscalation(rawReplyText);
     if (escalation) {
       handleEscalation({ channel: "text", ...escalation }).catch(() => {});
     }
+
+    // Same deal for the marketing-info marker — can appear in the same reply
+    // as an escalation marker, or on its own, or not at all.
+    const { cleanText: afterCustomerInfo, customerInfo } = extractCustomerInfo(afterEscalation);
+    if (customerInfo) {
+      logMarketingInfo({ channel: "text", ...customerInfo }).catch(() => {});
+    }
+
+    const replyText = afterCustomerInfo || "Let me get you the right answer on that — hang tight.";
 
     // Fire-and-forget: log that this call was handled, without delaying the reply.
     const userMessages = trimmedMessages.filter((m) => m.role === "user");

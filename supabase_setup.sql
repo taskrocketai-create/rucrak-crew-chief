@@ -52,3 +52,28 @@ alter table rucrak_chief_escalations enable row level security;
 -- Same RLS approach as rucrak_chief_calls above — locked down, service role
 -- key (used by both api/chat.js and api/log-escalation.js) bypasses it.
 
+-- ---------------------------------------------------------------------------
+-- Marketing context (added later): light, aggregate-only info Crew Chief
+-- picks up naturally (or asks 1-2 casual questions about) — vehicle type,
+-- general region, how they found rucRak, what they use it for. No email
+-- notification for this one, it's just data for Jason to review in
+-- aggregate later, not anything urgent. Multiple rows can exist per
+-- conversation as different details come up — this isn't meant to be
+-- joined back to a single customer record, just aggregated (e.g. "most
+-- common vehicle," "top referral sources this month").
+
+create table if not exists rucrak_marketing_notes (
+  id uuid primary key default gen_random_uuid(),
+  created_at timestamptz not null default now(),
+  channel text,             -- 'text' or 'voice'
+  vehicle text,             -- e.g. "Jeep Wrangler JL", null if not captured
+  region text,               -- general area/state, never a precise address
+  referral_source text,      -- how they found rucRak, null if not captured
+  use_case text              -- daily driver / off-roading / overlanding / etc, null if not captured
+);
+
+create index if not exists rucrak_marketing_notes_created_at_idx on rucrak_marketing_notes (created_at desc);
+
+alter table rucrak_marketing_notes enable row level security;
+-- Same RLS approach as the other two tables above.
+

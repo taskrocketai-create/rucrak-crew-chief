@@ -99,4 +99,38 @@ async function handleEscalation(details) {
   ]);
 }
 
-module.exports = { sendEscalationEmail, logEscalation, handleEscalation };
+// --- Marketing context logging -----------------------------------------
+// Separate from escalations — this is just aggregate data collection, no
+// email notification needed (nobody needs to be paged over "customer is in
+// Colorado, drives a Wrangler"). Same Supabase env vars as everything else.
+async function logMarketingInfo({ channel, vehicle, region, referralSource, useCase }) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+  if (!supabaseUrl || !supabaseKey) return; // logging not configured — skip quietly
+
+  // Skip entirely if nothing useful was actually captured.
+  if (!vehicle && !region && !referralSource && !useCase) return;
+
+  try {
+    await fetch(`${supabaseUrl}/rest/v1/rucrak_marketing_notes`, {
+      method: "POST",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: supabaseKey,
+        Authorization: `Bearer ${supabaseKey}`,
+        Prefer: "return=minimal"
+      },
+      body: JSON.stringify([{
+        channel,
+        vehicle: vehicle || null,
+        region: region || null,
+        referral_source: referralSource || null,
+        use_case: useCase || null
+      }])
+    });
+  } catch (err) {
+    console.error("Marketing info Supabase logging failed (non-fatal):", err.message);
+  }
+}
+
+module.exports = { sendEscalationEmail, logEscalation, handleEscalation, logMarketingInfo };

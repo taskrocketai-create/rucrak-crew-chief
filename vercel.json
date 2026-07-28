@@ -11,6 +11,9 @@
     },
     "api/log-escalation.js": {
       "maxDuration": 10
+    },
+    "api/log-marketing-info.js": {
+      "maxDuration": 10
     }
   }
 }
