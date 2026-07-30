@@ -129,22 +129,34 @@
     .crew-chief-card{ display:none; }
   }
   @media (max-width:480px){
-    .chat-panel{
-      width:calc(100vw - 24px);
-      height:min(75vh, 640px);
+    /* On a phone, a small floating box in the corner just doesn't work —
+       there's no room to spare. Go full-screen instead, the way basically
+       every real mobile chat/support experience does (Intercom, Zendesk,
+       etc.) — maximize the actual conversation space rather than fighting
+       to fit a desktop-shaped widget into a small screen.
+       (Simple-selector overrides like .plate, .brand, .chat-panel-close etc.
+       live in the LATER mobile media query near the end of this stylesheet,
+       not here — CSS cascade order matters for same-specificity rules, and
+       those base styles are defined further down than this block.) */
+    .chat-widget.open{
+      top:0; left:0; right:0; bottom:0;
+      width:100vw;
+      align-items:stretch;
     }
-    /* The header looks great on desktop but eats a huge chunk of a phone's
-       limited height — compact it hard so there's actual room for the
-       conversation. Nothing here is functional, all decorative, safe to trim. */
-    .plate{
-      margin:8px 8px 0 8px;
-      padding:10px 12px 8px 12px;
+    .chat-widget.open .chat-panel{
+      display:flex;
+      width:100vw;
+      max-width:none;
+      height:100dvh;
+      height:100vh; /* fallback for browsers without dvh support */
+      margin-bottom:0;
     }
-    .brand{ font-size:22px; }
-    .plate-badge{ font-size:9px; padding:3px 6px; }
-    .plate-sub{ display:none; }
-    .gauge-row{ display:none; }
-    .rivet{ display:none; }
+    .chat-widget.open .app{
+      border-radius:0;
+      box-shadow:none;
+      height:100%;
+    }
+    .chat-widget.open .crew-chief-card{ display:none; } /* already hidden below 620px, kept explicit here too */
   }
 
   .chat-panel-close{
@@ -662,8 +674,40 @@
   ::-webkit-scrollbar-thumb{background:var(--rivet-dark);border-radius:4px;}
 
   @media (max-width:480px){
-    .brand{font-size:28px;}
     .msg{max-width:94%;}
+
+    /* Compact top-bar header instead of the desktop spec-plate treatment —
+       one slim row, not a whole decorative card. This has to live in THIS
+       later media query block (not the earlier one near the top of the
+       stylesheet) because these are same-specificity overrides of .plate,
+       .brand, etc. — CSS cascade resolves ties by source order, so this
+       needs to come after those base rules are defined. */
+    .plate{
+      margin:0;
+      padding:14px 52px 14px 16px; /* right padding clears the close button */
+      padding-top:calc(14px + env(safe-area-inset-top, 0px));
+      background:var(--gunmetal);
+      border:none;
+      border-radius:0;
+      box-shadow:0 1px 0 var(--rivet-dark);
+    }
+    .plate-top{ align-items:center; }
+    .brand{ font-size:19px; }
+    .plate-badge{ font-size:8.5px; padding:3px 6px; }
+    .plate-sub{ display:none; }
+    .gauge-row{ display:none; }
+    .rivet{ display:none; }
+
+    .chat-panel-close{
+      top:calc(10px + env(safe-area-inset-top, 0px));
+      right:12px;
+      width:32px; height:32px;
+      font-size:16px;
+    }
+
+    /* A bit more breathing room now that there's a full screen to work
+       with instead of a cramped floating box. */
+    .keypad-wrap{ padding-bottom:env(safe-area-inset-bottom, 0px); }
   }
 
   @media (prefers-reduced-motion: reduce){
