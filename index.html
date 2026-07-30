@@ -664,8 +664,8 @@
 
   <div class="chat-panel">
     <div class="crew-chief-card">
-      <img src="/crew-chief.png" alt="Crew Chief, rucRak's mechanic mascot">
-      <div class="cc-caption">CREW CHIEF · ON DUTY</div>
+      <img src="/crew-chief.png" alt="Daryll, rucRak's Crew Chief">
+      <div class="cc-caption">DARYLL · ON DUTY</div>
     </div>
     <button class="chat-panel-close" id="chatPanelClose" type="button" title="Close chat" aria-label="Close chat">&times;</button>
 <div class="app">
@@ -675,7 +675,7 @@
     <span class="rivet bl"></span><span class="rivet br"></span>
     <div class="plate-top">
       <div class="brand">RUC<span>RAK</span> FIELD SUPPORT</div>
-      <div class="plate-badge">CREW CHIEF · ON DUTY</div>
+      <div class="plate-badge">DARYLL · ON DUTY</div>
     </div>
     <div class="plate-sub">Installation · Fitment · Troubleshooting — GRUNT / GUNNY / SERGEANT</div>
 
@@ -715,7 +715,7 @@
           </div>
         </div>
         <textarea id="input" rows="1" placeholder="Ask about install, fitment, or a rattle you can't place..."></textarea>
-        <button class="attach" id="talkBtn" type="button" title="Talk to Crew Chief">🎙️</button>
+        <button class="attach" id="talkBtn" type="button" title="Talk to Daryll">🎙️</button>
         <button class="send" id="sendBtn">Send</button>
       </div>
     </div>
@@ -748,7 +748,7 @@
 </div>
   </div>
 
-  <button class="chat-toggle" id="chatToggle" type="button" title="Chat with Crew Chief" aria-label="Open chat">
+  <button class="chat-toggle" id="chatToggle" type="button" title="Chat with Daryll" aria-label="Open chat">
     <span class="bubble-cta">Talk to me →</span>
     <img src="/crew-chief.png" alt="Crew Chief">
     <span class="ping"></span>
@@ -1147,7 +1147,7 @@ function openChat(){
   chatWidget.classList.add('open');
   if(!hasGreeted){
     hasGreeted = true;
-    addMessage('bot', "Well hey there. Crew Chief's on the clock. Tell me what you're wrestlin' with — install, fitment, or somethin's rattlin' around back there — and let me know which model you've got: GRUNT or GUNNY. What's goin' on?");
+    addMessage('bot', "Well hey there, I'm Daryll, rucRak's Crew Chief. Tell me what you're wrestlin' with — install, fitment, or somethin's rattlin' around back there — and let me know which model you've got: GRUNT or GUNNY. What's goin' on?");
   }
   // Voice leads now — show the voice screen with a "tap to start talking" prompt rather
   // than connecting automatically, so the mic-permission prompt only fires on a deliberate tap.
@@ -1168,7 +1168,7 @@ chatPanelClose.addEventListener('click', closeChat);
 // ==================== VOICE MODE (Vapi) ====================
 const VAPI_PUBLIC_KEY = "df87c007-25eb-4771-92c6-8a6a55cdb46c";
 const CREW_CHIEF_ASSISTANT_ID = "d890cde2-65a3-42e5-9832-e9697a3c5775"; // model, voice, and the full system prompt all live here now — edit in the Vapi dashboard, not in this file
-const GREETING_TEXT = "Well hey there. Crew Chief's on the clock. Tell me what you're wrestlin' with — install, fitment, or somethin's rattlin' around back there — and let me know which model you've got: GRUNT or GUNNY. What's goin' on?";
+const GREETING_TEXT = "Well hey there, I'm Daryll, rucRak's Crew Chief. Tell me what you're wrestlin' with — install, fitment, or somethin's rattlin' around back there — and let me know which model you've got: GRUNT or GUNNY. What's goin' on?";
 const appEl = document.querySelector('.app');
 const talkBtn = document.getElementById('talkBtn');
 const voiceStatus = document.getElementById('voiceStatus');
