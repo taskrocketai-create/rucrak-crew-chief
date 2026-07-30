@@ -310,6 +310,12 @@
     line-height:1.5;
     white-space:pre-wrap;
   }
+  .msg-link{
+    color:var(--orange);
+    text-decoration:underline;
+    word-break:break-all;
+  }
+  .msg-link:hover{ color:var(--chalk); }
   .msg.user{
     align-self:flex-end;
     background:var(--orange-dim);
@@ -544,8 +550,78 @@
   }
 
   /* ---------- Voice mode ---------- */
-  .text-mode-view{
+  .mode-select-view{
+    display:none;
+    flex:1;
+    flex-direction:column;
+    align-items:center;
+    justify-content:center;
+    gap:16px;
+    padding:24px;
+    text-align:center;
+  }
+  .mode-select-heading{
+    font-family:'Oswald',sans-serif;
+    font-size:19px;
+    font-weight:500;
+    color:var(--chalk);
+  }
+  .mode-select-sub{
+    font-size:13px;
+    color:var(--chalk-dim);
+    max-width:280px;
+    margin-top:-8px;
+  }
+  .mode-select-chips{
     display:flex;
+    flex-wrap:wrap;
+    gap:8px;
+    justify-content:center;
+    max-width:320px;
+  }
+  .mode-select-chips .chip{
+    cursor:pointer;
+    background:var(--panel-raised);
+    border:1px solid var(--rivet-dark);
+    color:var(--chalk-dim);
+    font-family:'JetBrains Mono',monospace;
+    font-size:12px;
+    padding:8px 12px;
+    border-radius:20px;
+    white-space:nowrap;
+  }
+  .mode-select-chips .chip:hover{ border-color:var(--orange); color:var(--chalk); }
+  .mode-select-chips .chip.selected{
+    background:var(--orange);
+    border-color:var(--orange);
+    color:var(--gunmetal);
+    font-weight:600;
+  }
+  .mode-select-channels{
+    display:flex;
+    gap:10px;
+    margin-top:8px;
+  }
+  .mode-channel-btn{
+    display:flex;
+    flex-direction:column;
+    align-items:center;
+    gap:6px;
+    background:var(--panel-raised);
+    border:1px solid var(--rivet-dark);
+    color:var(--chalk);
+    border-radius:8px;
+    padding:14px 22px;
+    cursor:pointer;
+    font-family:'Inter',sans-serif;
+    font-size:13px;
+    font-weight:500;
+  }
+  .mode-channel-btn:hover{ border-color:var(--orange); }
+  .mode-channel-icon{ font-size:24px; }
+
+  .text-mode-view{
+    display:none;
     flex-direction:column;
     flex:1;
     min-height:0;
@@ -564,8 +640,9 @@
     padding:24px;
     text-align:center;
   }
-  .app.voice-active .text-mode-view{ display:none; }
-  .app.voice-active .voice-mode-view{ display:flex; }
+  .app[data-mode="select"] .mode-select-view{ display:flex; }
+  .app[data-mode="text"] .text-mode-view{ display:flex; }
+  .app[data-mode="voice"] .voice-mode-view{ display:flex; }
 
   .voice-status{
     font-family:'JetBrains Mono',monospace;
@@ -745,6 +822,22 @@
         </g>
       </svg>
       <div class="gauge-label" id="gaugeLabel">Torque check: <b>GOOD &amp; SNUG</b> — ask away, crew chief's ready.</div>
+    </div>
+  </div>
+
+  <div class="mode-select-view" id="modeSelectView">
+    <div class="mode-select-heading">What's going on with your rig?</div>
+    <div class="mode-select-sub">Pick what's closest, or skip it and just ask — then choose how you want to talk it through.</div>
+    <div class="mode-select-chips" id="modeSelectChips"></div>
+    <div class="mode-select-channels">
+      <button class="mode-channel-btn" id="modeChooseTextBtn" type="button">
+        <span class="mode-channel-icon">💬</span>
+        <span>Type it out</span>
+      </button>
+      <button class="mode-channel-btn" id="modeChooseVoiceBtn" type="button">
+        <span class="mode-channel-icon">🎙️</span>
+        <span>Talk it through</span>
+      </button>
     </div>
   </div>
 
@@ -1103,6 +1196,10 @@ function escapeHtml(str){
 function formatBotText(str){
   let s = escapeHtml(str);
   s = s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
+  // Turn plain URLs into actual tappable links — since Daryll may share
+  // install videos, manual pages, etc., these need to be clickable, not
+  // just plain text the customer has to manually copy.
+  s = s.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="msg-link">$1</a>');
   return s;
 }
 
@@ -1224,15 +1321,66 @@ const chatToggle = document.getElementById('chatToggle');
 const chatPanelClose = document.getElementById('chatPanelClose');
 let hasGreeted = false;
 
-function openChat(){
-  chatWidget.classList.add('open');
-  if(!hasGreeted){
+// ==================== Mode management (landing screen / text / voice) ====================
+// Three mutually-exclusive modes now instead of a simple voice/text boolean —
+// see the .app[data-mode="..."] CSS rules. Persists across closing/reopening
+// the widget within the same page load, so someone who already started a
+// conversation doesn't get bounced back to square one just for closing the
+// panel to look at something else.
+let currentMode = 'select';
+function setMode(mode){
+  currentMode = mode;
+  appEl.dataset.mode = mode;
+}
+
+let selectedLandingTopic = null;
+
+function renderModeSelectChips(){
+  const container = document.getElementById('modeSelectChips');
+  container.innerHTML = '';
+  STARTERS.forEach(q=>{
+    const c = document.createElement('div');
+    c.className = 'chip';
+    c.textContent = q;
+    c.onclick = ()=>{
+      const alreadySelected = c.classList.contains('selected');
+      container.querySelectorAll('.chip').forEach(el => el.classList.remove('selected'));
+      if(alreadySelected){
+        selectedLandingTopic = null;
+      } else {
+        c.classList.add('selected');
+        selectedLandingTopic = q;
+      }
+    };
+    container.appendChild(c);
+  });
+}
+renderModeSelectChips();
+
+document.getElementById('modeChooseTextBtn').addEventListener('click', ()=>{
+  setMode('text');
+  if(selectedLandingTopic){
+    hasGreeted = true; // they already told us the topic — skip the generic canned greeting
+    input.value = selectedLandingTopic;
+    sendMessage();
+  } else if(!hasGreeted){
     hasGreeted = true;
     addMessage('bot', "Well hey there, I'm Daryll, rucRak's Crew Chief. Tell me what you're wrestlin' with — install, fitment, or somethin's rattlin' around back there — and let me know which model you've got: GRUNT or GUNNY. What's goin' on?");
   }
-  // Voice leads now — show the voice screen with a "tap to start talking" prompt rather
-  // than connecting automatically, so the mic-permission prompt only fires on a deliberate tap.
-  appEl.classList.add('voice-active');
+  selectedLandingTopic = null;
+});
+
+document.getElementById('modeChooseVoiceBtn').addEventListener('click', ()=>{
+  if(selectedLandingTopic){
+    voiceStartContext = selectedLandingTopic;
+  }
+  selectedLandingTopic = null;
+  startVoiceMode(); // this itself calls setMode('voice')
+});
+
+function openChat(){
+  chatWidget.classList.add('open');
+  setMode(currentMode); // show whichever mode they were last in (or the landing screen, first time)
 }
 function closeChat(){
   chatWidget.classList.remove('open');
@@ -1240,8 +1388,8 @@ function closeChat(){
   if(voiceCallActive && vapiInstance){
     vapiInstance.stop();
   }
-  appEl.classList.remove('voice-active');
-  resetVoiceIdleUI();
+  // currentMode is intentionally left as-is — reopening should return to
+  // wherever they were, not force them back to the landing screen.
 }
 chatToggle.addEventListener('click', openChat);
 chatPanelClose.addEventListener('click', closeChat);
@@ -1299,11 +1447,6 @@ function buildTextHistorySummary(){
 // text mode (or ending the call) can hand that conversation over to text
 // mode's history — the reverse direction of the text-to-voice handoff below.
 let voiceTranscriptBuffer = [];
-// Set at call-start, actually sent on the first speech-end after that (see
-// below) — sending immediately at call-start races against the assistant's
-// own opening greeting and INTERRUPTS it, per a documented Vapi SDK quirk
-// (sending a message while the assistant is actively speaking cuts it off).
-let pendingHistoryToInject = null;
 
 function flushVoiceTranscriptToText(){
   if(voiceTranscriptBuffer.length === 0) return;
@@ -1320,6 +1463,10 @@ function flushVoiceTranscriptToText(){
 // vapi.addMessage() if that doesn't exist (an alternate method name seen in
 // some Vapi docs), and logs clearly which path was taken or whether both
 // failed, since a silent failure here is otherwise impossible to diagnose.
+// Only used for genuinely mid-call events now (like a photo analysis result)
+// — the initial text-to-voice handoff goes through variableValues at call
+// start instead (see startVoiceMode), which is more reliable since it
+// doesn't race against the assistant's own opening greeting.
 function sendVapiMessage(vapi, message, label){
   try {
     if(typeof vapi.send === 'function'){
@@ -1352,10 +1499,6 @@ function attachVapiListeners(vapi){
     // that flow continue now that we're actually connected.
     pendingCallStartResolvers.forEach(resolve => resolve());
     pendingCallStartResolvers = [];
-
-    // Queue the text-mode handoff, but don't send it yet — see the note on
-    // pendingHistoryToInject above. Actually sent on the first speech-end.
-    pendingHistoryToInject = buildTextHistorySummary();
   });
 
   vapi.on('call-end', ()=>{
@@ -1373,16 +1516,6 @@ function attachVapiListeners(vapi){
   vapi.on('speech-end', ()=>{
     voiceStatus.textContent = 'Listening...';
     voiceOrb.className = 'voice-orb listening';
-
-    // Safe to send now — the assistant just finished a turn, so this won't
-    // interrupt anything. Only fires once per call (cleared after sending).
-    if(pendingHistoryToInject){
-      sendVapiMessage(vapi, {
-        role: 'system',
-        content: `The customer was just chatting with you over text before switching to voice. Here's that conversation so far:\n\n${pendingHistoryToInject}\n\nContinue naturally from here — you already know this context, don't re-introduce yourself or re-ask anything already covered above, just pick the conversation up where it left off.`
-      }, 'text-history handoff');
-      pendingHistoryToInject = null;
-    }
   });
 
   // Captures the live transcript so it can be handed to text mode later —
@@ -1445,12 +1578,26 @@ const vapiReadyPromise = new Promise((resolve, reject)=>{
   firstScript.parentNode.insertBefore(script, firstScript);
 });
 
+// Set right before calling startVoiceMode() when there's a specific topic to
+// hand off (e.g. a chip picked from the landing screen). Falls back to the
+// prior text conversation if this isn't explicitly set.
+let voiceStartContext = null;
+
 function startVoiceMode(){
-  appEl.classList.add('voice-active');
+  setMode('voice');
   voiceStatus.textContent = 'Connecting...';
   voiceOrb.className = 'voice-orb';
   voiceSub.textContent = 'Hang on, getting Crew Chief on the line.';
   voiceStartBtn.style.display = 'none'; // prevent double-tapping while it connects
+
+  // Context handed to the assistant via variableValues, set BEFORE the call
+  // starts rather than injected mid-call — this sidesteps an entire class of
+  // timing/interruption problems that come with sending a message while the
+  // assistant might already be speaking. Requires the Vapi dashboard's
+  // system prompt to reference {{priorContext}} and the First Message field
+  // to have a conditional greeting based on it (see README/setup notes).
+  const contextForCall = voiceStartContext || buildTextHistorySummary() || "";
+  voiceStartContext = null; // one-shot, don't leak into the next call
 
   vapiReadyPromise
     .then((vapi)=>{
@@ -1460,7 +1607,9 @@ function startVoiceMode(){
       // vapiSDK.run() above only sets up the instance — it doesn't start a call on its own,
       // so we always explicitly start one here in response to the tap.
       if(!voiceCallActive){
-        const startResult = vapi.start(CREW_CHIEF_ASSISTANT_ID);
+        const startResult = vapi.start(CREW_CHIEF_ASSISTANT_ID, {
+          variableValues: { priorContext: contextForCall }
+        });
         if(startResult && typeof startResult.catch === 'function'){
           startResult.catch((err)=>{
             console.error('Vapi start() rejected:', err);
@@ -1482,17 +1631,27 @@ function startVoiceMode(){
 }
 
 function endVoiceMode(){
+  // Stops the call and returns to the voice screen's idle "tap to start"
+  // state — stays in voice mode. Use switchToTextMode() to actually leave
+  // voice mode for text.
   if(voiceCallActive && vapiInstance){
     vapiInstance.stop();
   }
-  appEl.classList.remove('voice-active');
   resetVoiceIdleUI();
+}
+
+function switchToTextMode(){
+  if(voiceCallActive && vapiInstance){
+    vapiInstance.stop(); // call-end handler flushes the transcript into text mode's history
+  }
+  resetVoiceIdleUI();
+  setMode('text');
 }
 
 voiceStartBtn.addEventListener('click', startVoiceMode);
 talkBtn.addEventListener('click', startVoiceMode);
 voiceEndBtn.addEventListener('click', endVoiceMode);
-voiceBackTextBtn.addEventListener('click', endVoiceMode);
+voiceBackTextBtn.addEventListener('click', switchToTextMode);
 </script>
 </body>
 </html>
