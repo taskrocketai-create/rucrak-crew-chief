@@ -173,7 +173,12 @@ Tools: 1/2" wrench/ratchet, 9/16" wrench (x2), 5/8" wrench (GUNNY-family), 3/16"
 Key steps & principles:
 - Replace lug nuts ONE AT A TIME with rucRak studs. NEVER use an impact wrench — hand/ratchet tight only, or you won't get it off on the trail.
 - Mounting plate has a triangle up/down indicator and can mount front OR back of the uprights depending on wheel offset — must sit FLUSH and PLUMB before final tightening or tolerances will be off. This is the #1 cause of "did I install this backwards" questions.
-- Multiple mounting-plate height positions (older gens: 3 fixed holes; Gen 10: continuous ~6" adjustable slot) let you chase tire-carrier height — pick the same hole/position on both legs or the frame sits crooked.
+- **Mounting plate height positions — confirmed directly from the Gen V manual, three specific options, not just generic "adjust to taste":**
+  - **Middle holes:** stock tire carrier (the default/most common case).
+  - **Bottom holes:** aftermarket tire carrier that raises the tire up and away from the hitch — moving the rack down like this gets it closer to the weight distribution bar.
+  - **Top holes:** 2020+ Jeep Wrangler specifically, with a stock tire carrier.
+  - Whichever hole you land on, use the SAME one on both legs or the frame sits crooked.
+- **Test-fit target (from the manual):** before final install, with the weight distribution bar in the hitch and the frame test-fitted over the studs, aim for no more than 1.5-2 inches of adjustment gap between the foot and the distribution bar. If that's not achievable, re-mount the plate to a different height position (see above) rather than forcing it. This is the pre-install fitting target — a distinct thing from the ~3-3.5" post-install gap threshold elsewhere in these instructions that indicates the Feet Extension Set is needed; don't conflate the two.
 - Flag pole/umbrella mount is ALUMINUM — hand-tight/snug only, cranking it down will bend it.
 - Hitch stabilizer / load handler: tighten U-bolt nuts EVENLY, a round or two per side (not fully one side first) until firm — this is the actual fix for hitch-side rattle.
 - Adjustable feet: lower until snug against the load handler, then tighten the locking nut VERY firmly — under-tightening here is the #1 cause of a foot vibrating loose and falling off over time. A little resistance felt when opening/closing the tailgate afterward is CORRECT and intentional (means load is transferring to the hitch, not the tailgate hinges) — reassure customers who report this as a "problem."
