@@ -784,19 +784,21 @@
       <span class="voice-orb-label">Tap to start talking</span>
     </button>
     <div class="voice-sub" id="voiceSub">Crew Chief will start talking as soon as you tap in.</div>
-    <div class="voice-actions" id="voiceActiveActions" style="display:none;">
-      <input type="file" id="voiceFileInputCamera" accept="image/*" capture="environment" style="display:none">
-      <input type="file" id="voiceFileInputGallery" accept="image/*" style="display:none">
-      <div class="voice-photo-menu-wrap">
-        <button class="voice-photo-btn" id="voicePhotoBtn" type="button" title="Send a fitment photo">📷 Send a photo</button>
-        <div class="attach-menu" id="voicePhotoMenu">
-          <button type="button" id="voicePhotoMenuCamera">📷 Take Photo</button>
-          <button type="button" id="voicePhotoMenuGallery">🖼️ Choose from Library</button>
-        </div>
+
+    <input type="file" id="voiceFileInputCamera" accept="image/*" capture="environment" style="display:none">
+    <input type="file" id="voiceFileInputGallery" accept="image/*" style="display:none">
+    <div class="voice-photo-menu-wrap">
+      <button class="voice-photo-btn" id="voicePhotoBtn" type="button" title="Send a fitment photo">📷 Send a photo</button>
+      <div class="attach-menu" id="voicePhotoMenu">
+        <button type="button" id="voicePhotoMenuCamera">📷 Take Photo</button>
+        <button type="button" id="voicePhotoMenuGallery">🖼️ Choose from Library</button>
       </div>
-      <button class="voice-end" id="voiceEndBtn" type="button">End call</button>
     </div>
     <div class="voice-photo-status" id="voicePhotoStatus"></div>
+
+    <div class="voice-actions" id="voiceActiveActions" style="display:none;">
+      <button class="voice-end" id="voiceEndBtn" type="button">End call</button>
+    </div>
     <button class="voice-back-text" id="voiceBackTextBtn" type="button">Switch to typing</button>
   </div>
 
@@ -906,10 +908,22 @@ function setVoicePhotoStatus(text, kind){
   voicePhotoStatus.className = 'voice-photo-status' + (kind ? ' ' + kind : '');
 }
 
+// Lets analyzeVoicePhoto (below) start the call automatically and wait for
+// it to actually connect, rather than just erroring if you tap the photo
+// button before you've tapped "Tap to start talking" first.
+let pendingCallStartResolvers = [];
+function waitForVoiceCallActive(){
+  if(voiceCallActive) return Promise.resolve();
+  return new Promise((resolve)=>{
+    pendingCallStartResolvers.push(resolve);
+    startVoiceMode();
+  });
+}
+
 async function analyzeVoicePhoto(file){
   if(!voiceCallActive || !vapiInstance){
-    setVoicePhotoStatus("No active call to send that to — start talking first.", 'error');
-    return;
+    setVoicePhotoStatus('Starting the call first...', 'working');
+    await waitForVoiceCallActive();
   }
   setVoicePhotoStatus('Uploading photo...', 'working');
   let imgData;
@@ -1046,17 +1060,31 @@ function handleSelectedFiles(fileList, inputEl){
     addMessage('bot', `Grabbing the first ${room} of those — ${MAX_IMAGES} photos is my limit per message.`);
   }
 
-  toProcess.forEach(file=>{
+  // Sending immediately once photos are picked, rather than leaving them
+  // sitting in a "pending" state waiting for a separate Send tap — that
+  // in-between state looked like nothing had happened. Wait for every
+  // photo in this batch to finish compressing before sending once, not
+  // once per photo.
+  const compressionPromises = toProcess.map(file=>
     compressImageFile(file)
       .then((imgData)=>{
         pendingImages.push(imgData);
         attachPreview.classList.add('show');
         renderAttachThumbs();
+        return true;
       })
       .catch((err)=>{
         addMessage('bot', err.message || 'Had trouble reading that photo — skipping it.');
-      });
+        return false;
+      })
+  );
+
+  Promise.all(compressionPromises).then(()=>{
+    if(pendingImages.length > 0){
+      sendMessage();
+    }
   });
+
   inputEl.value = ''; // allow re-selecting the same file(s) later
 }
 
@@ -1247,6 +1275,29 @@ resetVoiceIdleUI();
 let vapiInstance = null;
 let voiceCallActive = false;
 
+// Builds a plain-text summary of whatever's already been discussed in text
+// mode, so switching to voice doesn't start from a blank slate. Skips raw
+// image data (can't usefully summarize a photo we don't have a description
+// for) but notes that one was shared, for context.
+function buildTextHistorySummary(){
+  if(!messages || messages.length === 0) return null;
+  const lines = [];
+  for(const m of messages){
+    const role = m.role === 'user' ? 'Customer' : 'Daryll';
+    if(typeof m.content === 'string'){
+      lines.push(`${role}: ${m.content}`);
+    } else if(Array.isArray(m.content)){
+      const textParts = m.content.filter(b => b.type === 'text').map(b => b.text);
+      const hadImage = m.content.some(b => b.type === 'image');
+      let line = `${role}: ${textParts.join(' ')}`;
+      if(hadImage) line += ' [customer also shared a fitment photo here]';
+      lines.push(line);
+    }
+  }
+  if(lines.length === 0) return null;
+  return lines.join('\n');
+}
+
 function attachVapiListeners(vapi){
   vapi.on('call-start', ()=>{
     voiceCallActive = true;
@@ -1255,6 +1306,24 @@ function attachVapiListeners(vapi){
     voiceSub.textContent = "Say what's going on — Crew Chief's listening.";
     voiceStartBtn.style.display = 'none';
     voiceActiveActions.style.display = 'flex';
+
+    // If someone tapped "Send a photo" before starting the call, this lets
+    // that flow continue now that we're actually connected.
+    pendingCallStartResolvers.forEach(resolve => resolve());
+    pendingCallStartResolvers = [];
+
+    // If they were already talking in text mode, hand that context over so
+    // switching to voice doesn't feel like starting over from scratch.
+    const priorHistory = buildTextHistorySummary();
+    if(priorHistory){
+      vapi.send({
+        type: 'add-message',
+        message: {
+          role: 'system',
+          content: `The customer was just chatting with you over text before switching to voice. Here's that conversation so far:\n\n${priorHistory}\n\nContinue naturally from here — you already know this context, don't re-introduce yourself or re-ask anything already covered above, just pick the conversation up where it left off.`
+        }
+      });
+    }
   });
 
   vapi.on('call-end', ()=>{
