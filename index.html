@@ -1298,6 +1298,26 @@ function buildTextHistorySummary(){
   return lines.join('\n');
 }
 
+// Accumulates voice-call turns as they're transcribed, so switching back to
+// text mode (or ending the call) can hand that conversation over to text
+// mode's history — the reverse direction of the text-to-voice handoff below.
+let voiceTranscriptBuffer = [];
+// Set at call-start, actually sent on the first speech-end after that (see
+// below) — sending immediately at call-start races against the assistant's
+// own opening greeting and INTERRUPTS it, per a documented Vapi SDK quirk
+// (sending a message while the assistant is actively speaking cuts it off).
+let pendingHistoryToInject = null;
+
+function flushVoiceTranscriptToText(){
+  if(voiceTranscriptBuffer.length === 0) return;
+  for(const turn of voiceTranscriptBuffer){
+    addMessage(turn.role === 'user' ? 'user' : 'bot', turn.text);
+    messages.push({ role: turn.role === 'user' ? 'user' : 'assistant', content: turn.text });
+  }
+  voiceTranscriptBuffer = [];
+  hasGreeted = true; // don't re-fire the canned text greeting after a real voice conversation happened
+}
+
 function attachVapiListeners(vapi){
   vapi.on('call-start', ()=>{
     voiceCallActive = true;
@@ -1306,28 +1326,21 @@ function attachVapiListeners(vapi){
     voiceSub.textContent = "Say what's going on — Crew Chief's listening.";
     voiceStartBtn.style.display = 'none';
     voiceActiveActions.style.display = 'flex';
+    voiceTranscriptBuffer = []; // fresh call, don't carry over anything stale
 
     // If someone tapped "Send a photo" before starting the call, this lets
     // that flow continue now that we're actually connected.
     pendingCallStartResolvers.forEach(resolve => resolve());
     pendingCallStartResolvers = [];
 
-    // If they were already talking in text mode, hand that context over so
-    // switching to voice doesn't feel like starting over from scratch.
-    const priorHistory = buildTextHistorySummary();
-    if(priorHistory){
-      vapi.send({
-        type: 'add-message',
-        message: {
-          role: 'system',
-          content: `The customer was just chatting with you over text before switching to voice. Here's that conversation so far:\n\n${priorHistory}\n\nContinue naturally from here — you already know this context, don't re-introduce yourself or re-ask anything already covered above, just pick the conversation up where it left off.`
-        }
-      });
-    }
+    // Queue the text-mode handoff, but don't send it yet — see the note on
+    // pendingHistoryToInject above. Actually sent on the first speech-end.
+    pendingHistoryToInject = buildTextHistorySummary();
   });
 
   vapi.on('call-end', ()=>{
     voiceCallActive = false;
+    flushVoiceTranscriptToText(); // hand the voice conversation over to text mode's history
     // Back to the idle "tap to start" screen, not text — they can still choose to switch manually.
     resetVoiceIdleUI();
   });
@@ -1340,6 +1353,29 @@ function attachVapiListeners(vapi){
   vapi.on('speech-end', ()=>{
     voiceStatus.textContent = 'Listening...';
     voiceOrb.className = 'voice-orb listening';
+
+    // Safe to send now — the assistant just finished a turn, so this won't
+    // interrupt anything. Only fires once per call (cleared after sending).
+    if(pendingHistoryToInject){
+      vapi.send({
+        type: 'add-message',
+        message: {
+          role: 'system',
+          content: `The customer was just chatting with you over text before switching to voice. Here's that conversation so far:\n\n${pendingHistoryToInject}\n\nContinue naturally from here — you already know this context, don't re-introduce yourself or re-ask anything already covered above, just pick the conversation up where it left off.`
+        }
+      });
+      pendingHistoryToInject = null;
+    }
+  });
+
+  // Captures the live transcript so it can be handed to text mode later —
+  // see flushVoiceTranscriptToText above. Requires "transcript" to be
+  // enabled in the assistant's clientMessages in the Vapi dashboard; if
+  // it's not receiving these, double-check that setting there.
+  vapi.on('message', (message)=>{
+    if(message && message.type === 'transcript' && message.transcriptType === 'final' && message.transcript){
+      voiceTranscriptBuffer.push({ role: message.role === 'user' ? 'user' : 'assistant', text: message.transcript });
+    }
   });
 
   vapi.on('error', (err)=>{
