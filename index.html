@@ -955,13 +955,10 @@ async function analyzeVoicePhoto(file){
     // Inject the analysis into the live call as context — the assistant on the call
     // (same Crew Chief persona/voice) will read this and relay it naturally in its
     // own words on its next turn, without the call ending or restarting.
-    vapiInstance.send({
-      type: 'add-message',
-      message: {
-        role: 'system',
-        content: `The customer just sent a photo during this call. Automated fitment analysis of that photo: ${analysisText}\n\nRelay this to the customer naturally in your own voice and style right now — don't read it verbatim or robotically, explain it like you normally would in conversation.`
-      }
-    });
+    sendVapiMessage(vapiInstance, {
+      role: 'system',
+      content: `The customer just sent a photo during this call. Automated fitment analysis of that photo: ${analysisText}\n\nRelay this to the customer naturally in your own voice and style right now — don't read it verbatim or robotically, explain it like you normally would in conversation.`
+    }, 'photo analysis handoff');
     setVoicePhotoStatus('Sent — Crew Chief will bring it up.', 'done');
     setTimeout(()=> setVoicePhotoStatus('', ''), 4000);
   } catch(err){
@@ -1318,6 +1315,29 @@ function flushVoiceTranscriptToText(){
   hasGreeted = true; // don't re-fire the canned text greeting after a real voice conversation happened
 }
 
+// Shared, defensive wrapper for injecting a message into a live call —
+// tries vapi.send() first (the documented method), falls back to
+// vapi.addMessage() if that doesn't exist (an alternate method name seen in
+// some Vapi docs), and logs clearly which path was taken or whether both
+// failed, since a silent failure here is otherwise impossible to diagnose.
+function sendVapiMessage(vapi, message, label){
+  try {
+    if(typeof vapi.send === 'function'){
+      console.log(`Sending ${label} via vapi.send()...`);
+      vapi.send({ type: 'add-message', message });
+      console.log(`vapi.send() for ${label} completed without throwing.`);
+    } else if(typeof vapi.addMessage === 'function'){
+      console.log(`vapi.send is not a function on this instance — trying vapi.addMessage() for ${label}...`);
+      vapi.addMessage(message);
+      console.log(`vapi.addMessage() for ${label} completed without throwing.`);
+    } else {
+      console.error(`Neither vapi.send nor vapi.addMessage exist on this instance — ${label} cannot be delivered.`);
+    }
+  } catch(err){
+    console.error(`${label} threw an error:`, err);
+  }
+}
+
 function attachVapiListeners(vapi){
   vapi.on('call-start', ()=>{
     voiceCallActive = true;
@@ -1357,13 +1377,10 @@ function attachVapiListeners(vapi){
     // Safe to send now — the assistant just finished a turn, so this won't
     // interrupt anything. Only fires once per call (cleared after sending).
     if(pendingHistoryToInject){
-      vapi.send({
-        type: 'add-message',
-        message: {
-          role: 'system',
-          content: `The customer was just chatting with you over text before switching to voice. Here's that conversation so far:\n\n${pendingHistoryToInject}\n\nContinue naturally from here — you already know this context, don't re-introduce yourself or re-ask anything already covered above, just pick the conversation up where it left off.`
-        }
-      });
+      sendVapiMessage(vapi, {
+        role: 'system',
+        content: `The customer was just chatting with you over text before switching to voice. Here's that conversation so far:\n\n${pendingHistoryToInject}\n\nContinue naturally from here — you already know this context, don't re-introduce yourself or re-ask anything already covered above, just pick the conversation up where it left off.`
+      }, 'text-history handoff');
       pendingHistoryToInject = null;
     }
   });
