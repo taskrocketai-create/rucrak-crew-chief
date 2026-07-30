@@ -133,6 +133,18 @@
       width:calc(100vw - 24px);
       height:min(75vh, 640px);
     }
+    /* The header looks great on desktop but eats a huge chunk of a phone's
+       limited height — compact it hard so there's actual room for the
+       conversation. Nothing here is functional, all decorative, safe to trim. */
+    .plate{
+      margin:8px 8px 0 8px;
+      padding:10px 12px 8px 12px;
+    }
+    .brand{ font-size:22px; }
+    .plate-badge{ font-size:9px; padding:3px 6px; }
+    .plate-sub{ display:none; }
+    .gauge-row{ display:none; }
+    .rivet{ display:none; }
   }
 
   .chat-panel-close{
