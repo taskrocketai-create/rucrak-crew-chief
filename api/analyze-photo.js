@@ -145,7 +145,8 @@ module.exports = async (req, res) => {
 
     if (!anthropicResponse.ok) {
       const apiMsg = (data && data.error && data.error.message) ? data.error.message : JSON.stringify(data);
-      return res.status(anthropicResponse.status).json({ error: `Anthropic API error: ${apiMsg}` });
+      console.error("Anthropic API error (analyze-photo):", anthropicResponse.status, apiMsg);
+      return res.status(502).json({ error: "Couldn't analyze that photo right now — please try again shortly." });
     }
 
     const textBlocks = (data.content || [])
@@ -155,6 +156,7 @@ module.exports = async (req, res) => {
 
     return res.status(200).json({ text: analysisText });
   } catch (err) {
-    return res.status(500).json({ error: `Server error calling Anthropic API: ${err.message}` });
+    console.error("Server error calling Anthropic API (analyze-photo):", err.message);
+    return res.status(500).json({ error: "Something went wrong analyzing that photo — please try again shortly." });
   }
 };

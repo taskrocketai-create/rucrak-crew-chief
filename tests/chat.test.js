@@ -121,7 +121,7 @@ test("happy path: extracts text from a mocked successful Anthropic response", as
   });
 });
 
-test("propagates an Anthropic API error with its status code", async () => {
+test("never exposes a raw Anthropic API error to the customer", async () => {
   await withEnv({ ANTHROPIC_API_KEY: "test-key" }, async () => {
     await withMockedFetch(
       async () => ({
@@ -135,8 +135,13 @@ test("propagates an Anthropic API error with its status code", async () => {
           ip: "10.0.0.4"
         });
         await handler(req, res);
-        assert.equal(res._status, 401);
-        assert.match(res._json.error, /invalid x-api-key/);
+        // Customer always gets a normal 200 + friendly in-character message —
+        // never the raw status code or API error text, regardless of what
+        // actually went wrong upstream (auth failure, low credit balance, etc).
+        assert.equal(res._status, 200);
+        assert.ok(res._json.text, "should return a text field like a normal reply");
+        assert.doesNotMatch(res._json.text, /invalid x-api-key/);
+        assert.doesNotMatch(res._json.text, /401/);
       }
     );
   });

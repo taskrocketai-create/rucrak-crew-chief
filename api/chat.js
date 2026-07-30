@@ -267,7 +267,14 @@ module.exports = async (req, res) => {
 
     if (!anthropicResponse.ok) {
       const apiMsg = (data && data.error && data.error.message) ? data.error.message : JSON.stringify(data);
-      return res.status(anthropicResponse.status).json({ error: `Anthropic API error: ${apiMsg}` });
+      // Log the real reason server-side (visible in Vercel's function logs) —
+      // but NEVER expose raw API/billing errors to the customer. A credit
+      // balance or auth error is an internal problem, not something a
+      // customer should ever see verbatim.
+      console.error("Anthropic API error:", anthropicResponse.status, apiMsg);
+      return res.status(200).json({
+        text: "Well shoot, I'm having some trouble getting connected right now — nothing you did wrong. Give it a few minutes and try again, or reach out to rucRak support directly if it keeps up."
+      });
     }
 
     const textBlocks = (data.content || [])
@@ -307,6 +314,9 @@ module.exports = async (req, res) => {
 
     return res.status(200).json({ text: replyText });
   } catch (err) {
-    return res.status(500).json({ error: `Server error calling Anthropic API: ${err.message}` });
+    console.error("Server error calling Anthropic API:", err.message);
+    return res.status(200).json({
+      text: "Well shoot, I'm having some trouble getting connected right now — nothing you did wrong. Give it a few minutes and try again, or reach out to rucRak support directly if it keeps up."
+    });
   }
 };

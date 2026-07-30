@@ -895,8 +895,8 @@ async function analyzeVoicePhoto(file){
     setVoicePhotoStatus('Sent — Crew Chief will bring it up.', 'done');
     setTimeout(()=> setVoicePhotoStatus('', ''), 4000);
   } catch(err){
-    console.error('Voice photo analysis failed:', err);
-    setVoicePhotoStatus('Error: ' + (err.message || 'photo analysis failed.'), 'error');
+    console.error('Voice photo analysis failed:', err); // full details in console only
+    setVoicePhotoStatus("Couldn't get a read on that photo — try again in a moment.", 'error');
   }
 }
 
@@ -1116,8 +1116,8 @@ async function sendMessage(){
     messages.push({role:'assistant', content: replyText});
   } catch(err){
     typingDiv.remove();
-    addMessage('bot', "Well shoot, somethin' broke back here: " + err.message + "\n\n(Check that the /api/chat function is deployed and ANTHROPIC_API_KEY is set in your hosting environment.)");
-    console.error(err);
+    addMessage('bot', "Well shoot, I'm having some trouble getting connected right now — nothing you did wrong. Give it a minute and try again.");
+    console.error("Chat request failed:", err); // full details stay in the browser console, never shown to the customer
   } finally {
     setThinking(false);
     sendBtn.disabled = false;
