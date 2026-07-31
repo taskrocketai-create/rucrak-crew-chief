@@ -1485,6 +1485,24 @@ function sendVapiMessage(vapi, message, label){
   }
 }
 
+// Vapi error objects can take several different shapes depending on what
+// actually went wrong (a plain string, an Error, {message: "..."},
+// {message: {...nested...}}, {error: {message: "..."}}, or something else
+// entirely) — blindly concatenating err.message produces "[object Object]"
+// whenever message itself isn't a plain string. This unpacks it properly so
+// the on-screen error text is actually useful instead of that.
+function describeVapiError(err){
+  if(!err) return 'unknown error';
+  if(typeof err === 'string') return err;
+  if(typeof err.message === 'string') return err.message;
+  if(err.message && typeof err.message === 'object'){
+    try { return JSON.stringify(err.message); } catch(e){ /* fall through */ }
+  }
+  if(err.error && typeof err.error.message === 'string') return err.error.message;
+  if(err.error && typeof err.error === 'string') return err.error;
+  try { return JSON.stringify(err); } catch(e){ return String(err); }
+}
+
 function attachVapiListeners(vapi){
   vapi.on('call-start', ()=>{
     voiceCallActive = true;
@@ -1530,9 +1548,8 @@ function attachVapiListeners(vapi){
 
   vapi.on('error', (err)=>{
     console.error('Vapi error:', err);
-    const detail = (err && (err.message || (err.error && err.error.message) || JSON.stringify(err))) || 'unknown error';
     voiceStatus.textContent = "Couldn't connect";
-    voiceSub.textContent = 'Error: ' + detail;
+    voiceSub.textContent = 'Error: ' + describeVapiError(err);
     voiceOrb.className = 'voice-orb';
     voiceStartBtn.style.display = '';
     voiceActiveActions.style.display = 'none';
@@ -1614,7 +1631,7 @@ function startVoiceMode(){
           startResult.catch((err)=>{
             console.error('Vapi start() rejected:', err);
             voiceStatus.textContent = "Couldn't connect";
-            voiceSub.textContent = 'Error: ' + ((err && err.message) || 'call failed to start — see browser console for details.');
+            voiceSub.textContent = 'Error: ' + describeVapiError(err);
             voiceOrb.className = 'voice-orb';
             voiceStartBtn.style.display = '';
           });
@@ -1624,7 +1641,7 @@ function startVoiceMode(){
     .catch((err)=>{
       console.error('Voice mode failed to start:', err);
       voiceStatus.textContent = "Couldn't connect";
-      voiceSub.textContent = 'Error: ' + (err.message || 'something went wrong starting the call.');
+      voiceSub.textContent = 'Error: ' + describeVapiError(err);
       voiceOrb.className = 'voice-orb';
       voiceStartBtn.style.display = '';
     });
