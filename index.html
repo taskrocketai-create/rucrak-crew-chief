@@ -556,62 +556,65 @@
     flex-direction:column;
     align-items:center;
     justify-content:center;
-    gap:16px;
-    padding:24px;
+    gap:10px;
+    padding:16px 20px;
     text-align:center;
+    overflow-y:auto; /* safety net — shouldn't be needed if the content above fits, but never invisible/cut off if it doesn't */
+    min-height:0;
   }
   .mode-select-heading{
     font-family:'Oswald',sans-serif;
-    font-size:19px;
+    font-size:18px;
     font-weight:500;
     color:var(--chalk);
   }
   .mode-select-sub{
-    font-size:13px;
+    font-size:12.5px;
     color:var(--chalk-dim);
     max-width:280px;
-    margin-top:-8px;
+    margin-top:-4px;
   }
   .mode-select-chips{
     display:flex;
-    flex-wrap:wrap;
-    gap:8px;
-    justify-content:center;
-    max-width:320px;
+    flex-direction:column;
+    gap:6px;
+    width:100%;
+    max-width:300px;
   }
   .mode-select-chips .chip{
     cursor:pointer;
     background:var(--panel-raised);
     border:1px solid var(--rivet-dark);
-    color:var(--chalk-dim);
-    font-family:'JetBrains Mono',monospace;
-    font-size:12px;
-    padding:8px 12px;
-    border-radius:20px;
-    white-space:nowrap;
+    color:var(--chalk);
+    font-family:'Inter',sans-serif;
+    font-size:13px;
+    line-height:1.3;
+    padding:9px 12px;
+    border-radius:8px;
+    text-align:left;
   }
-  .mode-select-chips .chip:hover{ border-color:var(--orange); color:var(--chalk); }
-  .mode-select-chips .chip.selected{
-    background:var(--orange);
-    border-color:var(--orange);
-    color:var(--gunmetal);
-    font-weight:600;
+  .mode-select-chips .chip:hover{ border-color:var(--orange); }
+  .mode-select-or{
+    font-family:'JetBrains Mono',monospace;
+    font-size:11px;
+    color:var(--chalk-dim);
+    text-transform:uppercase;
+    letter-spacing:0.08em;
   }
   .mode-select-channels{
     display:flex;
     gap:10px;
-    margin-top:8px;
   }
   .mode-channel-btn{
     display:flex;
     flex-direction:column;
     align-items:center;
-    gap:6px;
+    gap:4px;
     background:var(--panel-raised);
     border:1px solid var(--rivet-dark);
     color:var(--chalk);
     border-radius:8px;
-    padding:14px 22px;
+    padding:10px 26px;
     cursor:pointer;
     font-family:'Inter',sans-serif;
     font-size:13px;
@@ -826,17 +829,18 @@
   </div>
 
   <div class="mode-select-view" id="modeSelectView">
-    <div class="mode-select-heading">What's going on with your rig?</div>
-    <div class="mode-select-sub">Pick what's closest, or skip it and just ask — then choose how you want to talk it through.</div>
+    <div class="mode-select-heading">What do you need help with?</div>
+    <div class="mode-select-sub">Tap a question to get your answer now.</div>
     <div class="mode-select-chips" id="modeSelectChips"></div>
+    <div class="mode-select-or">or</div>
     <div class="mode-select-channels">
       <button class="mode-channel-btn" id="modeChooseTextBtn" type="button">
         <span class="mode-channel-icon">💬</span>
-        <span>Type it out</span>
+        <span>Type</span>
       </button>
       <button class="mode-channel-btn" id="modeChooseVoiceBtn" type="button">
         <span class="mode-channel-icon">🎙️</span>
-        <span>Talk it through</span>
+        <span>Talk</span>
       </button>
     </div>
   </div>
@@ -1333,8 +1337,6 @@ function setMode(mode){
   appEl.dataset.mode = mode;
 }
 
-let selectedLandingTopic = null;
-
 function renderModeSelectChips(){
   const container = document.getElementById('modeSelectChips');
   container.innerHTML = '';
@@ -1343,14 +1345,13 @@ function renderModeSelectChips(){
     c.className = 'chip';
     c.textContent = q;
     c.onclick = ()=>{
-      const alreadySelected = c.classList.contains('selected');
-      container.querySelectorAll('.chip').forEach(el => el.classList.remove('selected'));
-      if(alreadySelected){
-        selectedLandingTopic = null;
-      } else {
-        c.classList.add('selected');
-        selectedLandingTopic = q;
-      }
+      // Tapping a question answers it right away — no extra step. Talk/Type
+      // buttons below are still there for someone who wants to ask their
+      // own thing instead of picking one of these.
+      hasGreeted = true;
+      setMode('text');
+      input.value = q;
+      sendMessage();
     };
     container.appendChild(c);
   });
@@ -1359,22 +1360,13 @@ renderModeSelectChips();
 
 document.getElementById('modeChooseTextBtn').addEventListener('click', ()=>{
   setMode('text');
-  if(selectedLandingTopic){
-    hasGreeted = true; // they already told us the topic — skip the generic canned greeting
-    input.value = selectedLandingTopic;
-    sendMessage();
-  } else if(!hasGreeted){
+  if(!hasGreeted){
     hasGreeted = true;
     addMessage('bot', "Well hey there, I'm Daryll, rucRak's Crew Chief. Tell me what you're wrestlin' with — install, fitment, or somethin's rattlin' around back there — and let me know which model you've got: GRUNT or GUNNY. What's goin' on?");
   }
-  selectedLandingTopic = null;
 });
 
 document.getElementById('modeChooseVoiceBtn').addEventListener('click', ()=>{
-  if(selectedLandingTopic){
-    voiceStartContext = selectedLandingTopic;
-  }
-  selectedLandingTopic = null;
   startVoiceMode(); // this itself calls setMode('voice')
 });
 
