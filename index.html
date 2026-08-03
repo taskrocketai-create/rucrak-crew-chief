@@ -48,7 +48,7 @@
   }
   .chat-backdrop.show{ display:block; }
 
-  /* Desktop: once opened, Daryll takes over as a large centered panel with
+  /* Desktop: once opened, Daryl takes over as a large centered panel with
      a dimmed backdrop behind it — a proper dedicated landing experience
      instead of a small corner popup. (Mobile has its own true full-screen
      takeover further down, in the max-width:480px block — this rule is
@@ -836,8 +836,8 @@
 
   <div class="chat-panel">
     <div class="crew-chief-card">
-      <img src="/crew-chief.png" alt="Daryll, rucRak's Crew Chief">
-      <div class="cc-caption">DARYLL · ON DUTY</div>
+      <img src="/crew-chief.png" alt="Daryl, rucRak's Crew Chief">
+      <div class="cc-caption">DARYL · ON DUTY</div>
     </div>
     <a class="chat-home-link" href="https://rucrak.com/" target="_blank" rel="noopener noreferrer" title="Back to rucrak.com">← rucrak.com</a>
     <button class="chat-panel-close" id="chatPanelClose" type="button" title="Close chat" aria-label="Close chat">&times;</button>
@@ -846,7 +846,7 @@
   <div class="plate">
     <div class="plate-top">
       <div class="brand">RUC<span>RAK</span> FIELD SUPPORT</div>
-      <div class="plate-badge">DARYLL · ON DUTY</div>
+      <div class="plate-badge">DARYL · ON DUTY</div>
     </div>
     <div class="plate-sub">Installation · Fitment · Troubleshooting — GRUNT / GUNNY / SERGEANT</div>
 
@@ -902,7 +902,7 @@
           </div>
         </div>
         <textarea id="input" rows="1" placeholder="Type your question..."></textarea>
-        <button class="attach" id="talkBtn" type="button" title="Talk to Daryll">🎙️</button>
+        <button class="attach" id="talkBtn" type="button" title="Talk to Daryl">🎙️</button>
         <button class="send" id="sendBtn">Send</button>
       </div>
     </div>
@@ -937,8 +937,8 @@
 </div>
   </div>
 
-  <button class="chat-toggle" id="chatToggle" type="button" title="Chat with Daryll" aria-label="Open chat">
-    <span class="bubble-cta">Questions? Daryll's On Duty.</span>
+  <button class="chat-toggle" id="chatToggle" type="button" title="Chat with Daryl" aria-label="Open chat">
+    <span class="bubble-cta">Questions? Daryl's On Duty.</span>
     <img src="/crew-chief.png" alt="Crew Chief">
     <span class="ping"></span>
   </button>
@@ -1234,7 +1234,7 @@ function escapeHtml(str){
 function formatBotText(str){
   let s = escapeHtml(str);
   s = s.replace(/\*\*(.+?)\*\*/g, '<b>$1</b>');
-  // Turn plain URLs into actual tappable links — since Daryll may share
+  // Turn plain URLs into actual tappable links — since Daryl may share
   // install videos, manual pages, etc., these need to be clickable, not
   // just plain text the customer has to manually copy.
   s = s.replace(/(https?:\/\/[^\s<]+)/g, '<a href="$1" target="_blank" rel="noopener noreferrer" class="msg-link">$1</a>');
@@ -1397,7 +1397,7 @@ document.getElementById('modeChooseTextBtn').addEventListener('click', ()=>{
   setMode('text');
   if(!hasGreeted){
     hasGreeted = true;
-    addMessage('bot', "Well hey there, I'm Daryll, rucRak's Crew Chief. Tell me what you're wrestlin' with — install, fitment, or somethin's rattlin' around back there — and let me know which model you've got: GRUNT or GUNNY. What's goin' on?");
+    addMessage('bot', "Well hey there, I'm Daryl, rucRak's Crew Chief. Tell me what you're wrestlin' with — install, fitment, or somethin's rattlin' around back there — and let me know which model you've got: GRUNT or GUNNY. What's goin' on?");
   }
 });
 
@@ -1427,7 +1427,7 @@ chatBackdrop.addEventListener('click', closeChat); // clicking outside the panel
 // ==================== VOICE MODE (Vapi) ====================
 const VAPI_PUBLIC_KEY = "df87c007-25eb-4771-92c6-8a6a55cdb46c";
 const CREW_CHIEF_ASSISTANT_ID = "d890cde2-65a3-42e5-9832-e9697a3c5775"; // model, voice, and the full system prompt all live here now — edit in the Vapi dashboard, not in this file
-const GREETING_TEXT = "Well hey there, I'm Daryll, rucRak's Crew Chief. Tell me what you're wrestlin' with — install, fitment, or somethin's rattlin' around back there — and let me know which model you've got: GRUNT or GUNNY. What's goin' on?";
+const GREETING_TEXT = "Well hey there, I'm Daryl, rucRak's Crew Chief. Tell me what you're wrestlin' with — install, fitment, or somethin's rattlin' around back there — and let me know which model you've got: GRUNT or GUNNY. What's goin' on?";
 const appEl = document.querySelector('.app');
 const talkBtn = document.getElementById('talkBtn');
 const voiceStatus = document.getElementById('voiceStatus');
@@ -1458,7 +1458,7 @@ function buildTextHistorySummary(){
   if(!messages || messages.length === 0) return null;
   const lines = [];
   for(const m of messages){
-    const role = m.role === 'user' ? 'Customer' : 'Daryll';
+    const role = m.role === 'user' ? 'Customer' : 'Daryl';
     if(typeof m.content === 'string'){
       lines.push(`${role}: ${m.content}`);
     } else if(Array.isArray(m.content)){
