@@ -22,6 +22,7 @@
 
 const SYSTEM_PROMPT = require('./_prompt.js');
 const { handleEscalation, logMarketingInfo, logPromoOptin } = require('./_notify.js');
+const { generateSessionDiscountCode } = require('./_discount.js');
 
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "*")
   .split(",")
@@ -367,7 +368,29 @@ module.exports = async (req, res) => {
     // pipeline, this one gets passed through in the response itself.
     const { cleanText: afterAddToCart, addToCart } = extractAddToCart(afterPromoOptin);
 
-    const replyText = afterAddToCart || "Let me get you the right answer on that — hang tight.";
+    let finalText = afterAddToCart || "Let me get you the right answer on that — hang tight.";
+
+    // Session-specific discount code: the model writes a literal
+    // @@DISCOUNT_CODE@@ placeholder exactly where it wants the code to
+    // appear in its sentence (see the prompt's SALES ROLE section). This is
+    // different from the other markers above -- instead of being stripped
+    // out, it gets swapped for a real, freshly-generated, expiring code
+    // right here before the customer ever sees the reply. Falls back to the
+    // original static "Daryl" code if generation fails for any reason (env
+    // vars not configured yet, Shopify API hiccup, etc.) -- still a working
+    // discount either way, just not session-unique in the fallback case.
+    if (finalText.includes("@@DISCOUNT_CODE@@")) {
+      let code;
+      try {
+        code = await generateSessionDiscountCode();
+      } catch (err) {
+        console.error("Session discount generation failed, falling back to static code (non-fatal):", err.message);
+        code = "Daryl";
+      }
+      finalText = finalText.split("@@DISCOUNT_CODE@@").join(code);
+    }
+
+    const replyText = finalText;
 
     // Fire-and-forget: log that this call was handled, without delaying the reply.
     const userMessages = trimmedMessages.filter((m) => m.role === "user");
