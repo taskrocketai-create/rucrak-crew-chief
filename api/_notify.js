@@ -10,7 +10,8 @@
 //   JASON_NOTIFY_EMAIL    -> the real inbox that should receive these
 //
 // Optional:
-//   CREWCHIEF_FROM_EMAIL  -> defaults to crewchief@rucrak.com. The domain
+//   CREWCHIEF_FROM_EMAIL  -> defaults to crewchief@send.rucrak.com (the
+//                            actually-verified sending domain). The domain
 //                            (rucrak.com) must be verified in Resend for
 //                            sending to work — see README for setup.
 //   SUPABASE_URL / SUPABASE_SERVICE_KEY -> same as the existing call
@@ -23,7 +24,7 @@
 async function sendEscalationEmail({ channel, question, customerName, customerContact }) {
   const apiKey = process.env.RESEND_API_KEY;
   const toEmail = process.env.JASON_NOTIFY_EMAIL;
-  const fromEmail = process.env.CREWCHIEF_FROM_EMAIL || "crewchief@rucrak.com";
+  const fromEmail = process.env.CREWCHIEF_FROM_EMAIL || "crewchief@send.rucrak.com";
 
   if (!apiKey || !toEmail) {
     console.log("Escalation email skipped — RESEND_API_KEY or JASON_NOTIFY_EMAIL not set.");

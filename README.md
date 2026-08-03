@@ -96,11 +96,14 @@ Vapi invokes directly when the assistant decides to escalate.
 
 **1. Resend (for the actual email notification)**
 - Sign up at resend.com (free tier is plenty for this volume)
-- Verify the **rucrak.com domain** (Resend gives you a few DNS records —
-  TXT/CNAME — to add wherever rucrak.com's DNS is managed). This doesn't
-  create a real mailbox; it just proves you control the domain, so you can
-  send FROM any address on it (e.g. `crewchief@rucrak.com`) without that
-  address needing to exist anywhere as an actual inbox.
+- Verify a sending domain in Resend — **this project actually verified
+  `send.rucrak.com`** (a subdomain, not the root `rucrak.com`), specifically
+  to avoid any conflict with whatever real email is already running on the
+  root domain. Resend gives you a few DNS records — TXT/CNAME/MX — to add
+  wherever rucrak.com's DNS is managed. This doesn't create a real mailbox;
+  it just proves you control the domain, so you can send FROM any address
+  on it (e.g. `crewchief@send.rucrak.com`) without that address needing to
+  exist anywhere as an actual inbox.
 - Grab your Resend API key
 - In Vercel → Settings → Environment Variables, add:
 
@@ -108,7 +111,7 @@ Vapi invokes directly when the assistant decides to escalate.
 |---|---|
 | `RESEND_API_KEY` | your Resend API key |
 | `JASON_NOTIFY_EMAIL` | the real inbox that should receive these (Jason's actual email) |
-| `CREWCHIEF_FROM_EMAIL` | optional — defaults to `crewchief@rucrak.com` if unset |
+| `CREWCHIEF_FROM_EMAIL` | optional — defaults to `crewchief@send.rucrak.com` if unset, matching the domain actually verified above. If you verify a different domain, set this explicitly to match it — the code's default won't send successfully from an unverified domain. |
 
 **2. Supabase (for the distinct escalation log)**
 - Run the second half of `supabase_setup.sql` (already includes both tables)

@@ -126,7 +126,7 @@ Keep the whole thing tight — a business owner skimming this on their phone sho
 async function sendReportEmail(reportText, unresolvedEscalations) {
   const apiKey = process.env.RESEND_API_KEY;
   const toEmail = process.env.JASON_NOTIFY_EMAIL;
-  const fromEmail = process.env.CREWCHIEF_FROM_EMAIL || "crewchief@rucrak.com";
+  const fromEmail = process.env.CREWCHIEF_FROM_EMAIL || "crewchief@send.rucrak.com";
   if (!apiKey || !toEmail) {
     console.log("Weekly report email skipped — RESEND_API_KEY or JASON_NOTIFY_EMAIL not set.");
     return;
