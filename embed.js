@@ -1,11 +1,18 @@
 (function() {
-  // rucRak Crew Chief (Daryl) widget loader -- injects everything needed into
-  // the page it's included on, using a Shadow DOM so the widget's own CSS
-  // (which includes global-looking rules like `body { font-family... }` that
-  // were fine when this ran as its own standalone page) can NEVER leak out and
-  // affect the host page's styling -- and the host page's styles can't leak in
-  // and mess with the widget either. This is the fix for the font/style bug
-  // that happened when embed.js first went live without this isolation.
+  // rucRak Crew Chief (Daryl) widget loader -- Shadow DOM isolates the
+  // widget's own CSS/HTML from the host page in both directions (see the
+  // font-leak fix from before). One thing Shadow DOM does NOT cover: Vapi's
+  // own SDK injects its default floating call button directly into the real
+  // page body (outside our shadow root, since Vapi has no idea we're using
+  // one) -- so the .vapi-btn{display:none} rule that used to hide it, back
+  // when everything was global, no longer reaches it now that it's scoped
+  // inside the shadow root. Fixed below with a small separate GLOBAL style
+  // rule targeting it directly, since that's the only way to reach an
+  // element Vapi puts outside our shadow tree.
+
+  var globalHideVapiBtn = document.createElement('style');
+  globalHideVapiBtn.textContent = '.vapi-btn{ display: none !important; }';
+  document.head.appendChild(globalHideVapiBtn);
 
   // Fonts -- loaded at the real document level (not inside the shadow root),
   // since font-face registration is a browser-level thing, not a CSS-cascade
