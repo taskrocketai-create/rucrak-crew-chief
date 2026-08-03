@@ -117,6 +117,41 @@ function extractCustomerInfo(replyText) {
   }
   return { cleanText, customerInfo };
 }
+// --- Add-to-cart marker parsing ----------------------------------------------
+// Same pattern again:
+//   @@ADD_TO_CART@@{"variantId":"...","quantity":1,"label":"..."}@@END@@
+// This one is different from the others in one way: it's not just a logging
+// signal, it's actually an instruction the FRONTEND acts on (calling
+// Shopify's real /cart/add.js endpoint from the customer's own browser
+// session). The backend here just extracts and validates the shape — the
+// actual cart mutation happens client-side, since that's the only place with
+// access to the customer's real cart session.
+const ADD_TO_CART_MARKER_RE = /@@ADD_TO_CART@@(.*?)@@END@@/s;
+
+function extractAddToCart(replyText) {
+  const match = replyText.match(ADD_TO_CART_MARKER_RE);
+  if (!match) return { cleanText: replyText, addToCart: null };
+
+  const cleanText = replyText.replace(ADD_TO_CART_MARKER_RE, "").trim();
+  let addToCart = null;
+  try {
+    const parsed = JSON.parse(match[1]);
+    const variantId = String(parsed.variantId || "").trim();
+    const quantity = Number(parsed.quantity) || 1;
+    if (variantId && /^\d+$/.test(variantId) && quantity > 0) {
+      addToCart = {
+        variantId,
+        quantity,
+        label: parsed.label || null
+      };
+    } else {
+      console.error("Add-to-cart marker had an invalid variantId/quantity (non-fatal):", match[1]);
+    }
+  } catch (err) {
+    console.error("Failed to parse add-to-cart marker JSON (non-fatal):", err.message, "raw:", match[1]);
+  }
+  return { cleanText, addToCart };
+}
 // ----------------------------------------------------------------------------
 
 
@@ -325,7 +360,14 @@ module.exports = async (req, res) => {
       logPromoOptin({ channel: "text", ...promoOptin }).catch(() => {});
     }
 
-    const replyText = afterPromoOptin || "Let me get you the right answer on that — hang tight.";
+    // Add-to-cart is different from the three above: it's not just a backend
+    // log, it's an actual instruction the frontend needs to act on (calling
+    // Shopify's real cart API from the customer's own browser session, which
+    // only the browser has access to). So instead of firing a background
+    // pipeline, this one gets passed through in the response itself.
+    const { cleanText: afterAddToCart, addToCart } = extractAddToCart(afterPromoOptin);
+
+    const replyText = afterAddToCart || "Let me get you the right answer on that — hang tight.";
 
     // Fire-and-forget: log that this call was handled, without delaying the reply.
     const userMessages = trimmedMessages.filter((m) => m.role === "user");
@@ -334,7 +376,7 @@ module.exports = async (req, res) => {
     );
     logHandledCall({ userMessages, hadImage }).catch(() => {});
 
-    return res.status(200).json({ text: replyText });
+    return res.status(200).json({ text: replyText, addToCart: addToCart || undefined });
   } catch (err) {
     console.error("Server error calling Anthropic API:", err.message);
     return res.status(200).json({

@@ -1276,6 +1276,29 @@ function setThinking(on){
 }
 
 
+// Adds an item to the customer's real Shopify cart via the store's own AJAX
+// Cart API. Same-origin only — see the comment where this is called from.
+async function addToShopifyCart(cartInstruction){
+  const label = cartInstruction.label || 'that item';
+  try {
+    const res = await fetch('/cart/add.js', {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+      body: JSON.stringify({
+        items: [{ id: Number(cartInstruction.variantId), quantity: cartInstruction.quantity || 1 }]
+      })
+    });
+    if(!res.ok){
+      const errBody = await res.json().catch(()=>null);
+      throw new Error((errBody && errBody.description) || `Cart add failed (${res.status})`);
+    }
+    addMessage('bot', `✅ Added **${label}** to your cart. Head to checkout here: https://rucrak.com/checkout`);
+  } catch(err){
+    console.error('Cart add failed:', err);
+    addMessage('bot', `Hmm, that didn't actually make it into your cart — might need to add ${label} yourself on the site, sorry about that.`);
+  }
+}
+
 async function sendMessage(){
   const text = input.value.trim();
   const hasImages = pendingImages.length > 0;
@@ -1330,6 +1353,16 @@ async function sendMessage(){
     typingDiv.remove();
     addMessage('bot', replyText);
     messages.push({role:'assistant', content: replyText});
+
+    // Real cart-add, via Shopify's own AJAX Cart API. This is a relative URL
+    // on purpose — it only resolves correctly when this widget is actually
+    // embedded on rucrak.com itself (same-origin, so the customer's real
+    // cart session/cookies apply automatically). On the standalone Vercel
+    // test site this will fail, which is expected and fine — there's no real
+    // Shopify cart to add to there anyway.
+    if(data.addToCart && data.addToCart.variantId){
+      await addToShopifyCart(data.addToCart);
+    }
   } catch(err){
     typingDiv.remove();
     addMessage('bot', "Well shoot, I'm having some trouble getting connected right now — nothing you did wrong. Give it a minute and try again.");
