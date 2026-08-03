@@ -1657,12 +1657,29 @@ function attachVapiListeners(vapi){
     if(message && message.type === 'transcript' && message.transcriptType === 'final' && message.transcript){
       voiceTranscriptBuffer.push({ role: message.role === 'user' ? 'user' : 'assistant', text: message.transcript });
     }
-    if(message && message.type === 'tool-calls' && Array.isArray(message.toolCalls)){
-      message.toolCalls.forEach((call)=>{
-        if(call && call.name === 'add_to_cart'){
-          handleVoiceAddToCart(vapi, call.parameters || {});
-        }
-      });
+    // Log every non-transcript message type seen during a call -- cheap
+    // insurance for debugging tool-calls delivery without flooding the
+    // console with every single transcript chunk.
+    if(message && message.type && message.type !== 'transcript'){
+      console.log('[voice] message type:', message.type, message);
+    }
+    if(message && message.type === 'tool-calls'){
+      const calls = message.toolCalls || message.tool_calls || [];
+      console.log('[voice] tool-calls received, count:', calls.length, calls);
+      if(Array.isArray(calls)){
+        calls.forEach((call)=>{
+          const callName = call && (call.name || (call.function && call.function.name));
+          console.log('[voice] tool call name:', callName, 'raw call:', call);
+          if(callName === 'add_to_cart'){
+            let params = call.parameters || (call.function && call.function.arguments) || {};
+            if(typeof params === 'string'){
+              try { params = JSON.parse(params); } catch(e){ console.error('[voice] add_to_cart params were a string that failed to parse:', params); params = {}; }
+            }
+            console.log('[voice] calling handleVoiceAddToCart with params:', params);
+            handleVoiceAddToCart(vapi, params);
+          }
+        });
+      }
     }
   });
 
