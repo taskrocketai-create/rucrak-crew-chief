@@ -38,6 +38,36 @@
     align-items:flex-end;
   }
 
+  .chat-backdrop{
+    display:none;
+    position:fixed;
+    inset:0;
+    background:rgba(10,11,13,0.6);
+    backdrop-filter:blur(2px);
+    z-index:999;
+  }
+  .chat-backdrop.show{ display:block; }
+
+  /* Desktop: once opened, Daryll takes over as a large centered panel with
+     a dimmed backdrop behind it — a proper dedicated landing experience
+     instead of a small corner popup. (Mobile has its own true full-screen
+     takeover further down, in the max-width:480px block — this rule is
+     specifically the desktop/tablet version.) */
+  @media (min-width:481px){
+    .chat-widget.open{
+      top:0; left:0; right:0; bottom:0;
+      width:100vw;
+      align-items:center;
+      justify-content:center;
+    }
+    .chat-widget.open .chat-panel{
+      width:min(760px, 90vw);
+      height:min(760px, 88vh);
+      max-width:none;
+      margin-bottom:0;
+    }
+  }
+
   .chat-toggle{
     width:78px;
     height:172px;
@@ -783,6 +813,7 @@
 </style>
 </head>
 <body>
+<div class="chat-backdrop" id="chatBackdrop"></div>
 <div class="chat-widget" id="chatWidget">
 
   <div class="chat-panel">
@@ -1307,6 +1338,7 @@ input.addEventListener('input', ()=>{
 const chatWidget = document.getElementById('chatWidget');
 const chatToggle = document.getElementById('chatToggle');
 const chatPanelClose = document.getElementById('chatPanelClose');
+const chatBackdrop = document.getElementById('chatBackdrop');
 let hasGreeted = false;
 
 // ==================== Mode management (landing screen / text / voice) ====================
@@ -1356,10 +1388,12 @@ document.getElementById('modeChooseVoiceBtn').addEventListener('click', ()=>{
 
 function openChat(){
   chatWidget.classList.add('open');
+  chatBackdrop.classList.add('show');
   setMode(currentMode); // show whichever mode they were last in (or the landing screen, first time)
 }
 function closeChat(){
   chatWidget.classList.remove('open');
+  chatBackdrop.classList.remove('show');
   // Don't leave a call running in the background after the panel's closed.
   if(voiceCallActive && vapiInstance){
     vapiInstance.stop();
@@ -1369,6 +1403,7 @@ function closeChat(){
 }
 chatToggle.addEventListener('click', openChat);
 chatPanelClose.addEventListener('click', closeChat);
+chatBackdrop.addEventListener('click', closeChat); // clicking outside the panel closes it, like a normal modal
 
 // ==================== VOICE MODE (Vapi) ====================
 const VAPI_PUBLIC_KEY = "df87c007-25eb-4771-92c6-8a6a55cdb46c";
