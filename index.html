@@ -1276,27 +1276,63 @@ function setThinking(on){
 }
 
 
-// Adds an item to the customer's real Shopify cart via the store's own AJAX
-// Cart API. Same-origin only — see the comment where this is called from.
+// Core cart-add logic, shared between text mode and voice mode -- both need
+// the exact same real Shopify AJAX Cart API call, just with different ways
+// of reporting the outcome back (a chat message vs. an injected system
+// message into a live call). Same-origin only: this resolves correctly when
+// the widget is actually embedded on rucrak.com (real cart session/cookies
+// apply automatically); on the standalone Vercel test site it'll fail, which
+// is expected since there's no real Shopify cart to add to there.
+async function performCartAdd(variantId, quantity){
+  const res = await fetch('/cart/add.js', {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
+    body: JSON.stringify({
+      items: [{ id: Number(variantId), quantity: quantity || 1 }]
+    })
+  });
+  if(!res.ok){
+    const errBody = await res.json().catch(()=>null);
+    throw new Error((errBody && errBody.description) || `Cart add failed (${res.status})`);
+  }
+}
+
+// Text mode: reports the outcome as a normal chat message.
 async function addToShopifyCart(cartInstruction){
   const label = cartInstruction.label || 'that item';
   try {
-    const res = await fetch('/cart/add.js', {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'Accept': 'application/json' },
-      body: JSON.stringify({
-        items: [{ id: Number(cartInstruction.variantId), quantity: cartInstruction.quantity || 1 }]
-      })
-    });
-    if(!res.ok){
-      const errBody = await res.json().catch(()=>null);
-      throw new Error((errBody && errBody.description) || `Cart add failed (${res.status})`);
-    }
+    await performCartAdd(cartInstruction.variantId, cartInstruction.quantity);
     addMessage('bot', `✅ Added **${label}** to your cart. Head to checkout here: https://rucrak.com/checkout`);
   } catch(err){
     console.error('Cart add failed:', err);
     addMessage('bot', `Hmm, that didn't actually make it into your cart — might need to add ${label} yourself on the site, sorry about that.`);
   }
+}
+
+// Voice mode: add_to_cart is a client-side Vapi tool (no server URL), so the
+// call arrives here in the browser instead of hitting a Vercel API route.
+// Vapi's client-side tools can't return a formal "result" to the model, so
+// instead the real outcome gets injected back into the live call as a
+// system message via vapi.send() -- same proven pattern as mid-call photo
+// analysis. Daryl picks this up naturally on his next turn rather than just
+// assuming the tool call itself means success.
+async function handleVoiceAddToCart(vapi, params){
+  const label = params.label || 'that item';
+  const variantId = params.variantId;
+  const quantity = params.quantity || 1;
+  let outcomeMessage;
+  if(!variantId){
+    outcomeMessage = `Cart update: add_to_cart was called without a variantId, so nothing was added. Tell the customer honestly that something went wrong on this end and offer to help them add it on the site directly.`;
+  } else {
+    try {
+      await performCartAdd(variantId, quantity);
+      outcomeMessage = `Cart update: successfully added "${label}" (variant ${variantId}, qty ${quantity}) to the customer's real cart on rucrak.com. Confirm this naturally and mention they can check out at rucrak.com/checkout when ready.`;
+    } catch(err){
+      console.error('Voice cart add failed:', err);
+      outcomeMessage = `Cart update: the add-to-cart call for "${label}" FAILED (${err.message}). Be honest that it didn't go through -- don't say it was added. Offer to help them add it themselves on the site instead.`;
+    }
+  }
+  sendVapiMessage(vapi, { role: 'system', content: outcomeMessage }, 'cart-add outcome');
 }
 
 async function sendMessage(){
@@ -1603,9 +1639,30 @@ function attachVapiListeners(vapi){
   // see flushVoiceTranscriptToText above. Requires "transcript" to be
   // enabled in the assistant's clientMessages in the Vapi dashboard; if
   // it's not receiving these, double-check that setting there.
+  //
+  // Also handles add_to_cart: this is a CLIENT-SIDE Vapi tool (no server URL
+  // configured in the dashboard), which means the call arrives here directly
+  // instead of hitting one of our Vercel API routes — the browser is the
+  // only place with access to the customer's real cart session, so this has
+  // to run here. Per Vapi's own docs, client-side tools can't return a
+  // formal "tool result" back to the model — so instead of that, this
+  // reuses the exact same pattern already proven for mid-call photo
+  // analysis: do the real work, then inject the outcome back into the live
+  // conversation as a system message via vapi.send(), which Daryl naturally
+  // picks up and reacts to on his next turn. Requires "tool-calls" enabled
+  // in the assistant's clientMessages in the Vapi dashboard, and an
+  // add_to_cart tool defined with NO server URL (that's what makes it
+  // client-side instead of routing to a webhook).
   vapi.on('message', (message)=>{
     if(message && message.type === 'transcript' && message.transcriptType === 'final' && message.transcript){
       voiceTranscriptBuffer.push({ role: message.role === 'user' ? 'user' : 'assistant', text: message.transcript });
+    }
+    if(message && message.type === 'tool-calls' && Array.isArray(message.toolCalls)){
+      message.toolCalls.forEach((call)=>{
+        if(call && call.name === 'add_to_cart'){
+          handleVoiceAddToCart(vapi, call.parameters || {});
+        }
+      });
     }
   });
 
