@@ -207,6 +207,21 @@
   }
   .chat-panel-close:hover{ color:var(--chalk); border-color:var(--orange); }
 
+  .chat-home-link{
+    position:absolute;
+    top:14px; left:14px;
+    z-index:3;
+    font-family:'Inter',sans-serif;
+    font-size:12px;
+    font-weight:500;
+    color:var(--chalk-dim);
+    text-decoration:none;
+    background:rgba(0,0,0,0.25);
+    padding:5px 10px;
+    border-radius:12px;
+  }
+  .chat-home-link:hover{ color:var(--chalk); }
+
   .app{
     width:100%;
     max-width:none;
@@ -821,6 +836,7 @@
       <img src="/crew-chief.png" alt="Daryll, rucRak's Crew Chief">
       <div class="cc-caption">DARYLL · ON DUTY</div>
     </div>
+    <a class="chat-home-link" href="https://rucrak.com/" target="_blank" rel="noopener noreferrer" title="Back to rucrak.com">← rucrak.com</a>
     <button class="chat-panel-close" id="chatPanelClose" type="button" title="Close chat" aria-label="Close chat">&times;</button>
 <div class="app">
 
