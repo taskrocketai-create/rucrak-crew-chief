@@ -231,7 +231,7 @@ Project → **Settings → Environment Variables**:
 | Key | Value |
 |---|---|
 | `ANTHROPIC_API_KEY` | your real key from Step 1 |
-| `ALLOWED_ORIGIN` | `https://rucrak.com` (or leave as `*` for initial testing) |
+| `ALLOWED_ORIGINS` | comma-separated list, e.g. `https://rucrak.com,https://www.rucrak.com,https://rucrak-crew-chief.vercel.app` (or leave as `*` for initial testing) |
 
 Redeploy after adding these.
 
@@ -266,7 +266,7 @@ the first step that actually spends API credits.
 
 **Already built in:**
 - API key never exposed to the browser
-- CORS restriction via `ALLOWED_ORIGIN`
+- CORS restriction via `ALLOWED_ORIGINS` (supports multiple specific origins at once — e.g. the production Shopify domain and this Vercel test site — not just a single value)
 - Per-IP rate limiting (12 messages/minute) — blocks casual abuse/button-mashing
 - Input validation (rejects malformed requests before they reach Anthropic)
 - Conversation history capped at 40 messages server-side (cost/latency guard)

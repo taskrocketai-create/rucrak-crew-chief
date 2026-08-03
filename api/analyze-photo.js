@@ -16,11 +16,22 @@
 //   ANTHROPIC_API_KEY
 //
 // Optional (shared with chat.js):
-//   ALLOWED_ORIGIN
+//   ALLOWED_ORIGINS -> comma-separated list, e.g.
+//                       "https://rucrak.com,https://www.rucrak.com,https://rucrak-crew-chief.vercel.app"
+//                       See api/chat.js's header comment for the full explanation.
 
 const SYSTEM_PROMPT = require('./_prompt.js');
 
-const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "*")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+function resolveAllowedOrigin(requestOrigin) {
+  if (ALLOWED_ORIGINS.includes("*")) return "*";
+  if (requestOrigin && ALLOWED_ORIGINS.includes(requestOrigin)) return requestOrigin;
+  return ALLOWED_ORIGINS[0] || "*";
+}
 
 const ANALYSIS_INSTRUCTIONS = `
 
@@ -65,7 +76,7 @@ function getClientIp(req) {
 }
 
 module.exports = async (req, res) => {
-  res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
+  res.setHeader("Access-Control-Allow-Origin", resolveAllowedOrigin(req.headers.origin));
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 

@@ -8,14 +8,36 @@
 //   ANTHROPIC_API_KEY   -> your real Anthropic API key
 //
 // Optional environment variable:
-//   ALLOWED_ORIGIN       -> e.g. "https://rucrak.com" to restrict who can call
-//                            this endpoint. Defaults to "*" (open) if unset —
-//                            you should set this before going live.
+//   ALLOWED_ORIGINS      -> comma-separated list of origins allowed to call
+//                            this endpoint, e.g.
+//                            "https://rucrak.com,https://www.rucrak.com,https://rucrak-crew-chief.vercel.app"
+//                            Defaults to "*" (open, any origin) if unset —
+//                            set this before/when going live on rucrak.com.
+//                            CORS only supports echoing back ONE matched
+//                            origin per request (not a literal list in the
+//                            header), so this checks the incoming request's
+//                            Origin against the allowlist and echoes back
+//                            the exact match — this is the standard pattern
+//                            for supporting several specific origins at once.
 
 const SYSTEM_PROMPT = require('./_prompt.js');
 const { handleEscalation, logMarketingInfo, logPromoOptin } = require('./_notify.js');
 
-const ALLOWED_ORIGIN = process.env.ALLOWED_ORIGIN || "*";
+const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "*")
+  .split(",")
+  .map((s) => s.trim())
+  .filter(Boolean);
+
+function resolveAllowedOrigin(requestOrigin) {
+  if (ALLOWED_ORIGINS.includes("*")) return "*";
+  if (requestOrigin && ALLOWED_ORIGINS.includes(requestOrigin)) return requestOrigin;
+  // No match — return the first configured origin rather than nothing, so
+  // the header is never simply missing (some browsers/tools behave oddly
+  // with no CORS header at all vs. an explicit non-matching one). A direct,
+  // non-browser caller (like Vapi's server-side webhook) doesn't send an
+  // Origin header and isn't affected by this either way.
+  return ALLOWED_ORIGINS[0] || "*";
+}
 
 // --- Escalation marker parsing -----------------------------------------------
 // Text mode has no tool-calling wired up (see api/log-escalation.js for the
@@ -187,7 +209,7 @@ function getClientIp(req) {
 
 module.exports = async (req, res) => {
   // CORS headers so your website's frontend is allowed to call this endpoint
-  res.setHeader("Access-Control-Allow-Origin", ALLOWED_ORIGIN);
+  res.setHeader("Access-Control-Allow-Origin", resolveAllowedOrigin(req.headers.origin));
   res.setHeader("Access-Control-Allow-Methods", "POST, OPTIONS");
   res.setHeader("Access-Control-Allow-Headers", "Content-Type");
 
