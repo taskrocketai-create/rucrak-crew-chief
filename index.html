@@ -89,16 +89,19 @@
   .chat-toggle:hover img{ transform:scale(1.04); }
   .chat-toggle .bubble-cta{
     position:absolute;
-    top:-26px;
-    left:-6px;
+    top:-40px;
+    left:-20px;
+    width:118px;
     background:var(--orange);
     color:var(--gunmetal);
     font-family:'Inter',sans-serif;
     font-weight:600;
     font-size:11.5px;
-    padding:6px 10px;
+    line-height:1.25;
+    text-align:center;
+    padding:7px 10px;
     border-radius:12px 12px 12px 3px;
-    white-space:nowrap;
+    white-space:normal;
     box-shadow:0 4px 10px rgba(0,0,0,0.35);
     animation:cta-bob 2.4s ease-in-out infinite;
   }
@@ -935,7 +938,7 @@
   </div>
 
   <button class="chat-toggle" id="chatToggle" type="button" title="Chat with Daryll" aria-label="Open chat">
-    <span class="bubble-cta">Talk to me →</span>
+    <span class="bubble-cta">Questions? Daryll's On Duty.</span>
     <img src="/crew-chief.png" alt="Crew Chief">
     <span class="ping"></span>
   </button>
