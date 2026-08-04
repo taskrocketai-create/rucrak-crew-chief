@@ -41,6 +41,11 @@ module.exports = async (req, res) => {
     return res.status(200).json(result);
   } catch (err) {
     console.error("cart-add failed:", err.message);
-    return res.status(500).json({ error: "Could not add to cart" });
+    // Returning the real error message here (not just a generic string) so
+    // it's visible directly in the browser console -- this is what's been
+    // slowing down every round of debugging so far, having to go find
+    // server-side logs separately instead of just seeing the real reason
+    // right where the failed request shows up.
+    return res.status(500).json({ error: "Could not add to cart", detail: err.message });
   }
 };
