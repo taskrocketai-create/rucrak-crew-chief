@@ -9,7 +9,9 @@
 //
 // Same request/response format as api/log-escalation.js — see that file's
 // header comment for the full rundown of Vapi's tool-call webhook rules
-// (always 200, single-line result strings, etc.)
+// (always 200, single-line result strings, etc.), including handling a
+// batch of more than one tool call per request (see the fix note in
+// api/add-to-cart-ack.js).
 
 const { logMarketingInfo } = require('./_notify.js');
 
@@ -17,26 +19,9 @@ function safeSingleLine(str) {
   return String(str || "").replace(/\r?\n/g, " ").trim();
 }
 
-module.exports = async (req, res) => {
-  if (req.method !== "POST") {
-    return res.status(200).json({ results: [] });
-  }
-
-  let toolCallId = "unknown";
+async function handleOneCall(toolCall) {
+  const toolCallId = (toolCall && toolCall.id) || "unknown";
   try {
-    const toolCall = req.body &&
-      req.body.message &&
-      Array.isArray(req.body.message.toolCallList) &&
-      req.body.message.toolCallList[0];
-
-    if (!toolCall) {
-      return res.status(200).json({
-        results: [{ toolCallId: "unknown", result: "No tool call found in request — nothing logged." }]
-      });
-    }
-
-    toolCallId = toolCall.id || "unknown";
-
     let args = (toolCall.function && toolCall.function.arguments) || {};
     if (typeof args === "string") {
       try {
@@ -54,13 +39,30 @@ module.exports = async (req, res) => {
       useCase: args.useCase || args.use_case || null
     });
 
-    return res.status(200).json({
-      results: [{ toolCallId, result: safeSingleLine("Noted, thanks.") }]
-    });
+    return { toolCallId, result: safeSingleLine("Noted, thanks.") };
   } catch (err) {
-    console.error("log-marketing-info error (non-fatal to the call):", err.message);
+    console.error("log-marketing-info error for one call (non-fatal to the call):", err.message);
+    return { toolCallId, result: safeSingleLine("Had trouble logging that, no big deal, keep going.") };
+  }
+}
+
+module.exports = async (req, res) => {
+  if (req.method !== "POST") {
+    return res.status(200).json({ results: [] });
+  }
+
+  const toolCalls = (req.body &&
+    req.body.message &&
+    Array.isArray(req.body.message.toolCallList) &&
+    req.body.message.toolCallList) || [];
+
+  if (toolCalls.length === 0) {
     return res.status(200).json({
-      results: [{ toolCallId, result: safeSingleLine("Had trouble logging that, no big deal, keep going.") }]
+      results: [{ toolCallId: "unknown", result: "No tool call found in request — nothing logged." }]
     });
   }
+
+  const results = await Promise.all(toolCalls.map(handleOneCall));
+  return res.status(200).json({ results });
 };
+
