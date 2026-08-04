@@ -1,41 +1,87 @@
 // api/add-to-cart-ack.js
 //
-// Real bug found via Vapi's own call logs: add_to_cart was configured as a
-// pure client-side tool (no server URL), and Vapi's own docs warn that
-// client-side tools can't return a proper result back to the model. What
-// wasn't obvious until seeing actual call logs: without that result, the
-// underlying system appears to treat the call as never having gone through,
-// and re-issues the exact same tool call repeatedly -- confirmed in a real
-// call, the same add_to_cart call fired 28 times in under 40 seconds with
-// identical parameters.
+// Voice-mode cart-add endpoint (kept at this filename/URL for continuity
+// with the existing Vapi dashboard config, even though it now does real
+// work, not just an acknowledgment -- renaming would mean updating the
+// Server URL in Vapi again for no functional benefit).
 //
-// Fix (round 1): add_to_cart now ALSO needs a real Server URL pointing
-// here. This endpoint does NOT perform the actual cart mutation -- it
-// can't, it has no access to the customer's browser/cart session. All it
-// does is immediately acknowledge the tool call with a proper result, which
-// stops the retry loop at the API level. The REAL mutation still happens
-// exactly as before, in the browser, via the existing vapi.on('message')
-// handler that catches the same tool-calls event independently (Vapi
-// delivers tool-call notifications to the browser via clientMessages
-// regardless of whether the tool also has a server URL).
+// History of how this endpoint got here, since it went through a few real
+// bugs before landing on the current design:
+// 1. add_to_cart started as a pure CLIENT-side tool (no server URL) so the
+//    browser could reach the customer's own cart session. But client-side
+//    tools can't return a result to the model, and without one, calls got
+//    retried indefinitely -- confirmed in real call logs, 28 identical
+//    calls in under 40 seconds.
+// 2. Added this endpoint as a pure acknowledgment (no real cart work) just
+//    to give the model a fast result and stop the retries. That fixed the
+//    single-call case, but a second real call log showed it still looping
+//    when Daryl called two tools in one turn -- this endpoint only read
+//    toolCallList[0], leaving the second call in the batch unanswered.
+//    Fixed to loop over the whole batch.
+// 3. Even after that, Vapi's own docs confirmed something more fundamental:
+//    a tool is EITHER client-side (no server URL) OR server-side (has one)
+//    -- never both. Adding a server URL had silently stopped Vapi from
+//    delivering the tool call to the browser at all, so the real cart
+//    mutation (which only ran in the browser) had stopped happening
+//    entirely.
+// 4. Also found that Shopify's classic cookie-based cart and the Storefront
+//    API cart are documented as not reliably interoperable -- bridging
+//    between the two risked two separate, unsynced carts.
 //
-// Fix (round 2 -- found via a second real call log): retries were still
-// happening, just less frequently. Root cause: when Daryl calls add_to_cart
-// for TWO items in the same turn (e.g. GRUNT + an accessory together), Vapi
-// batches BOTH tool calls into a single webhook request with two entries in
-// toolCallList -- but this endpoint was only reading toolCallList[0] and
-// only ever returning ONE result. The second tool call in the batch got no
-// response at all, Vapi's own "No result returned" fallback kicked in for
-// it, and that unanswered half of the pair kept the retry cycle alive.
-// Fixed by looping over every entry in toolCallList and returning a result
-// for each one, not just the first.
+// Current design: fully server-side, using Shopify's Storefront API
+// directly (see api/_cart.js) with a cartId the model passes as a tool
+// parameter (populated from {{cartId}}, set via variableValues when the
+// call starts -- see index.html). This is now a completely normal
+// synchronous tool, same pattern as flag_escalation: real result, real
+// cart mutation, no retry loop, no client-side involvement needed at all.
 //
-// Vapi's tool-call webhook format -- see api/log-escalation.js for the full
-// explanation; same shape here, except this endpoint may receive (and must
-// respond to) more than one tool call per request.
+// Vapi's tool-call webhook format -- see api/log-escalation.js for the
+// full explanation, including handling a batch of more than one tool call
+// per request.
+
+const { addLineToCartWithFallback } = require('./_cart.js');
 
 function safeSingleLine(str) {
   return String(str || "").replace(/\r?\n/g, " ").trim();
+}
+
+async function handleOneCall(toolCall) {
+  const toolCallId = (toolCall && toolCall.id) || "unknown";
+  try {
+    let args = (toolCall.function && toolCall.function.arguments) || {};
+    if (typeof args === "string") {
+      try {
+        args = JSON.parse(args);
+      } catch (err) {
+        args = {};
+      }
+    }
+
+    const variantId = args.variantId;
+    const quantity = Number(args.quantity) || 1;
+    const label = args.label || "that item";
+    // If cartId arrives as the literal unresolved template text (e.g. the
+    // model echoed "{{cartId}}" because variableValues wasn't actually set
+    // for this call), treat it as no cart ID at all rather than trying to
+    // use that literal string -- addLineToCartWithFallback creates a fresh
+    // cart automatically in that case.
+    const rawCartId = args.cartId;
+    const cartId = (rawCartId && !rawCartId.includes("{{")) ? rawCartId : null;
+
+    if (!variantId) {
+      return { toolCallId, result: safeSingleLine(`No variantId was provided for "${label}", so nothing was added. Tell the customer honestly and offer to help them add it on the site directly.`) };
+    }
+
+    const result = await addLineToCartWithFallback(cartId, variantId, quantity);
+    const newCartNote = result.createdNewCart ? " (started a fresh cart since the previous one wasn't found)" : "";
+    return {
+      toolCallId,
+      result: safeSingleLine(`Successfully added "${label}" to the cart${newCartNote}. Checkout link: ${result.checkoutUrl}. Confirm this naturally to the customer now -- you don't need to wait for anything further, this already happened.`)
+    };
+  } catch (err) {
+    console.error("add-to-cart-ack error for one call (non-fatal to the call):", err.message);
+    return { toolCallId, result: safeSingleLine("The cart update failed. Be honest with the customer that it didn't go through, don't claim success, and offer to help them add it on the site directly instead.") };
+  }
 }
 
 module.exports = async (req, res) => {
@@ -43,40 +89,17 @@ module.exports = async (req, res) => {
     return res.status(200).json({ results: [] });
   }
 
-  try {
-    const toolCalls = (req.body &&
-      req.body.message &&
-      Array.isArray(req.body.message.toolCallList) &&
-      req.body.message.toolCallList) || [];
+  const toolCalls = (req.body &&
+    req.body.message &&
+    Array.isArray(req.body.message.toolCallList) &&
+    req.body.message.toolCallList) || [];
 
-    if (toolCalls.length === 0) {
-      return res.status(200).json({ results: [{ toolCallId: "unknown", result: "Noted." }] });
-    }
-
-    // Deliberately NOT attempting the actual cart mutation here -- this
-    // process has no access to the customer's browser session. The browser
-    // itself handles the real /cart/add.js call independently, in parallel,
-    // via the same tool-calls event. This endpoint exists purely to give
-    // the model a fast, proper result for EVERY call in the batch so
-    // nothing gets left unanswered and retried.
-    const results = toolCalls.map((toolCall) => ({
-      toolCallId: (toolCall && toolCall.id) || "unknown",
-      result: safeSingleLine("Cart update received and being processed on the customer's device -- the real outcome will follow shortly as a separate system message, per your instructions.")
-    }));
-
-    return res.status(200).json({ results });
-  } catch (err) {
-    console.error("add-to-cart-ack error (non-fatal to the call):", err.message);
-    // Best-effort: still try to acknowledge whatever tool call IDs we can
-    // find, even after an error, rather than leaving all of them unanswered.
-    let fallbackResults = [{ toolCallId: "unknown", result: "Noted." }];
-    try {
-      const toolCalls = req.body && req.body.message && req.body.message.toolCallList;
-      if (Array.isArray(toolCalls) && toolCalls.length) {
-        fallbackResults = toolCalls.map((tc) => ({ toolCallId: (tc && tc.id) || "unknown", result: "Noted." }));
-      }
-    } catch (e2) { /* keep the single fallback above */ }
-    return res.status(200).json({ results: fallbackResults });
+  if (toolCalls.length === 0) {
+    return res.status(200).json({ results: [{ toolCallId: "unknown", result: "Noted." }] });
   }
+
+  const results = await Promise.all(toolCalls.map(handleOneCall));
+  return res.status(200).json({ results });
 };
+
 
