@@ -419,7 +419,10 @@ async function addToShopifyCart(cartInstruction){
         quantity: cartInstruction.quantity || 1
       })
     });
-    if(!res.ok) throw new Error(`Cart add failed (${res.status})`);
+    if(!res.ok){
+      const errBody = await res.json().catch(()=>null);
+      throw new Error(`Cart add failed (${res.status}): ${(errBody && errBody.detail) || 'no detail returned'}`);
+    }
     const data = await res.json();
     setStoredCartId(data.cartId); // may be a freshly-created cart if the old ID was stale
     addMessage('bot', `✅ Added **${label}** to your cart. Head to checkout here: ${data.checkoutUrl}`);
