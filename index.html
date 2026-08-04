@@ -1370,7 +1370,8 @@ async function addToShopifyCart(cartInstruction){
       body: JSON.stringify({
         cartId: getStoredCartId(),
         variantId: cartInstruction.variantId,
-        quantity: cartInstruction.quantity || 1
+        quantity: cartInstruction.quantity || 1,
+        applyDiscount: cartInstruction.applyDiscount === true
       })
     });
     if(!res.ok){
@@ -1379,7 +1380,11 @@ async function addToShopifyCart(cartInstruction){
     }
     const data = await res.json();
     setStoredCartId(data.cartId); // may be a freshly-created cart if the old ID was stale
-    addMessage('bot', `✅ Added **${label}** to your cart. Head to checkout here: ${data.checkoutUrl} — or hit **Continue Shopping** up top if you want to add more or double check what's in there.`);
+    // The discount, if requested, is already baked into data.checkoutUrl as
+    // a URL parameter (Shopify auto-applies it) -- no raw code to show here
+    // at all, just a plain confirmation that it's been applied.
+    const discountLine = cartInstruction.applyDiscount && data.discountApplied ? ' A $50 discount is already applied.' : '';
+    addMessage('bot', `✅ Added **${label}** to your cart.${discountLine} Head to checkout here: ${data.checkoutUrl} — or hit **Continue Shopping** up top if you want to add more or double check what's in there.`);
   } catch(err){
     console.error('Cart add failed:', err);
     addMessage('bot', `Hmm, that didn't actually make it into your cart — might need to add ${label} yourself on the site, sorry about that.`);

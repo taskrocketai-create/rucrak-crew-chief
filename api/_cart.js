@@ -20,6 +20,19 @@
 
 const SHOPIFY_API_VERSION = "2025-10";
 
+const { generateSessionDiscountCode } = require('./_discount.js');
+
+// Shopify supports auto-applying a discount code by appending it as a URL
+// parameter -- the customer never has to type or even see the raw code,
+// it's just already applied when they land on checkout. This is what lets
+// Daryl say "I've applied a $50 discount" without ever needing to read out
+// or write down an awkward code string like "DARYL-7F3KQ".
+function embedDiscountInUrl(checkoutUrl, discountCode) {
+  if (!checkoutUrl || !discountCode) return checkoutUrl;
+  const separator = checkoutUrl.includes('?') ? '&' : '?';
+  return `${checkoutUrl}${separator}discount=${encodeURIComponent(discountCode)}`;
+}
+
 async function shopifyStorefrontGraphQL(query, variables) {
   const domain = process.env.SHOPIFY_STORE_DOMAIN;
   const token = process.env.SHOPIFY_STOREFRONT_API_TOKEN;
@@ -60,10 +73,18 @@ async function createCart() {
   return { cartId: cart.id, checkoutUrl: cart.checkoutUrl };
 }
 
-// Adds one line item to an existing cart. Returns { checkoutUrl }.
+// Adds one line item to an existing cart. Returns { checkoutUrl, discountApplied }.
 // Throws if the cart doesn't exist (e.g. an expired/invalid ID) -- callers
 // should catch this and create a fresh cart as a fallback.
-async function addLineToCart(cartId, variantId, quantity) {
+//
+// applyDiscount: if true, generates a fresh session-specific discount code
+// (see api/_discount.js) and embeds it directly into the returned
+// checkoutUrl so it auto-applies -- the raw code itself is never returned
+// here, on purpose, so it can't accidentally end up in anything Daryl
+// reads aloud or writes out. If discount generation fails for any reason,
+// the cart-add itself still succeeds; discountApplied just comes back false
+// so the caller can be honest about that specific part not working.
+async function addLineToCart(cartId, variantId, quantity, applyDiscount) {
   const mutation = `
     mutation AddToCart($cartId: ID!, $lines: [CartLineInput!]!) {
       cartLinesAdd(cartId: $cartId, lines: $lines) {
@@ -84,25 +105,38 @@ async function addLineToCart(cartId, variantId, quantity) {
   if (!data.cartLinesAdd.cart) {
     throw new Error("Cart not found (likely an invalid/expired cart ID)");
   }
-  return { checkoutUrl: data.cartLinesAdd.cart.checkoutUrl };
+
+  let checkoutUrl = data.cartLinesAdd.cart.checkoutUrl;
+  let discountApplied = false;
+  if (applyDiscount) {
+    try {
+      const code = await generateSessionDiscountCode();
+      checkoutUrl = embedDiscountInUrl(checkoutUrl, code);
+      discountApplied = true;
+    } catch (err) {
+      console.error("Discount generation failed during add-to-cart, cart-add itself still succeeded (non-fatal):", err.message);
+    }
+  }
+
+  return { checkoutUrl, discountApplied };
 }
 
 // Adds a line item, automatically creating a fresh cart and retrying once
 // if the given cart ID turns out to be invalid/expired -- this is the
 // function both cart-add endpoints should actually call, rather than
 // addLineToCart directly, so a stale ID never just fails outright.
-async function addLineToCartWithFallback(cartId, variantId, quantity) {
+async function addLineToCartWithFallback(cartId, variantId, quantity, applyDiscount) {
   if (cartId) {
     try {
-      const result = await addLineToCart(cartId, variantId, quantity);
-      return { cartId, checkoutUrl: result.checkoutUrl, createdNewCart: false };
+      const result = await addLineToCart(cartId, variantId, quantity, applyDiscount);
+      return { cartId, checkoutUrl: result.checkoutUrl, discountApplied: result.discountApplied, createdNewCart: false };
     } catch (err) {
       console.error("addLineToCart failed with existing cartId, creating a fresh cart instead (non-fatal):", err.message);
     }
   }
   const newCart = await createCart();
-  const result = await addLineToCart(newCart.cartId, variantId, quantity);
-  return { cartId: newCart.cartId, checkoutUrl: result.checkoutUrl, createdNewCart: true };
+  const result = await addLineToCart(newCart.cartId, variantId, quantity, applyDiscount);
+  return { cartId: newCart.cartId, checkoutUrl: result.checkoutUrl, discountApplied: result.discountApplied, createdNewCart: true };
 }
 
 module.exports = { createCart, addLineToCart, addLineToCartWithFallback };

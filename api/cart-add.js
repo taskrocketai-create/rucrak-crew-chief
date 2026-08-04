@@ -32,12 +32,12 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const { cartId, variantId, quantity } = req.body || {};
+    const { cartId, variantId, quantity, applyDiscount } = req.body || {};
     if (!variantId) {
       return res.status(400).json({ error: "variantId is required" });
     }
 
-    const result = await addLineToCartWithFallback(cartId, variantId, quantity);
+    const result = await addLineToCartWithFallback(cartId, variantId, quantity, applyDiscount === true);
     return res.status(200).json(result);
   } catch (err) {
     console.error("cart-add failed:", err.message);

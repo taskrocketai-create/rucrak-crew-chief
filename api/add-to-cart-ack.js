@@ -41,6 +41,16 @@
 //    reports an honest failure instead of quietly substituting a different
 //    cart nobody can find. Consistent with the "never claim success you
 //    don't have" principle already built into the rest of this prompt.
+// 6. Real feedback: Daryl was reading the generated discount code out loud
+//    character by character, which sounds awkward and unnatural in speech.
+//    Fix: folded discount generation directly into this same action via a
+//    new applyDiscount parameter -- the code gets embedded straight into
+//    the checkout URL (Shopify auto-applies discount codes passed as a URL
+//    parameter) and Daryl never sees the raw code text at all, so there's
+//    nothing for him to accidentally read aloud. He just says a discount
+//    was applied, which is genuinely true. This also removed the separate
+//    generate_discount_code tool and @@DISCOUNT_CODE@@ placeholder
+//    entirely -- one unified action instead of two coordinated ones.
 //
 // Current design: fully server-side, using Shopify's Storefront API
 // directly (see api/_cart.js) with a cartId the model passes as a tool
@@ -74,6 +84,7 @@ async function handleOneCall(toolCall) {
     const variantId = args.variantId;
     const quantity = Number(args.quantity) || 1;
     const label = args.label || "that item";
+    const applyDiscount = args.applyDiscount === true || args.applyDiscount === "true";
     // If cartId arrives as the literal unresolved template text (e.g. the
     // model echoed "{{cartId}}" because variableValues wasn't actually set
     // for this call), treat it as no cart ID at all.
@@ -89,10 +100,15 @@ async function handleOneCall(toolCall) {
       return { toolCallId, result: safeSingleLine(`Couldn't reach the customer's cart (no valid cart ID came through) -- do NOT claim this was added, be honest that something went wrong on this end, and offer to help them add "${label}" themselves on the site, or suggest switching to typing so it can be added there instead.`) };
     }
 
-    const { checkoutUrl } = await addLineToCart(cartId, variantId, quantity);
+    const { checkoutUrl, discountApplied } = await addLineToCart(cartId, variantId, quantity, applyDiscount);
+    const discountNote = applyDiscount
+      ? (discountApplied
+          ? " A $50 discount has also been applied automatically -- it's already baked into the checkout link, so don't read out or mention any code, just tell them the discount is applied."
+          : " The discount specifically didn't apply this time (the item itself was still added fine) -- be honest that the discount part didn't go through if they ask, don't claim it's there.")
+      : "";
     return {
       toolCallId,
-      result: safeSingleLine(`Successfully added "${label}" to the cart. Checkout link: ${checkoutUrl}. Confirm this naturally to the customer now -- you don't need to wait for anything further, this already happened.`)
+      result: safeSingleLine(`Successfully added "${label}" to the cart.${discountNote} Checkout link: ${checkoutUrl}. Confirm this naturally to the customer now -- you don't need to wait for anything further, this already happened.`)
     };
   } catch (err) {
     console.error("add-to-cart-ack error for one call (non-fatal to the call):", err.message);

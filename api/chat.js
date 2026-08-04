@@ -22,7 +22,6 @@
 
 const SYSTEM_PROMPT = require('./_prompt.js');
 const { handleEscalation, logMarketingInfo, logPromoOptin } = require('./_notify.js');
-const { generateSessionDiscountCode } = require('./_discount.js');
 
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "*")
   .split(",")
@@ -143,7 +142,8 @@ function extractAddToCart(replyText) {
       addToCart = {
         variantId,
         quantity,
-        label: parsed.label || null
+        label: parsed.label || null,
+        applyDiscount: parsed.applyDiscount === true
       };
     } else {
       console.error("Add-to-cart marker had an invalid variantId/quantity (non-fatal):", match[1]);
@@ -366,31 +366,19 @@ module.exports = async (req, res) => {
     // Shopify's real cart API from the customer's own browser session, which
     // only the browser has access to). So instead of firing a background
     // pipeline, this one gets passed through in the response itself.
+    //
+    // Discount generation used to be a separate @@DISCOUNT_CODE@@ text
+    // placeholder handled here, coordinated with a separate add-to-cart step.
+    // Real feedback: this produced awkward results (Daryl reading a raw
+    // generated code string aloud/writing it out) and required correctly
+    // coordinating two separate actions. Folded directly into the add-to-cart
+    // action itself now (see api/_cart.js's applyDiscount) -- the discount
+    // gets embedded straight into the checkout URL, Daryl never sees or
+    // needs to mention the raw code at all, and there's only one action to
+    // get right instead of two.
     const { cleanText: afterAddToCart, addToCart } = extractAddToCart(afterPromoOptin);
 
-    let finalText = afterAddToCart || "Let me get you the right answer on that — hang tight.";
-
-    // Session-specific discount code: the model writes a literal
-    // @@DISCOUNT_CODE@@ placeholder exactly where it wants the code to
-    // appear in its sentence (see the prompt's SALES ROLE section). This is
-    // different from the other markers above -- instead of being stripped
-    // out, it gets swapped for a real, freshly-generated, expiring code
-    // right here before the customer ever sees the reply. Falls back to the
-    // original static "Daryl" code if generation fails for any reason (env
-    // vars not configured yet, Shopify API hiccup, etc.) -- still a working
-    // discount either way, just not session-unique in the fallback case.
-    if (finalText.includes("@@DISCOUNT_CODE@@")) {
-      let code;
-      try {
-        code = await generateSessionDiscountCode();
-      } catch (err) {
-        console.error("Session discount generation failed, falling back to static code (non-fatal):", err.message);
-        code = "Daryl";
-      }
-      finalText = finalText.split("@@DISCOUNT_CODE@@").join(code);
-    }
-
-    const replyText = finalText;
+    const replyText = afterAddToCart || "Let me get you the right answer on that — hang tight.";
 
     // Fire-and-forget: log that this call was handled, without delaying the reply.
     const userMessages = trimmedMessages.filter((m) => m.role === "user");

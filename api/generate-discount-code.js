@@ -1,5 +1,22 @@
 // api/generate-discount-code.js
 //
+// *** DEPRECATED *** -- discount generation is now folded directly into
+// api/add-to-cart-ack.js via an applyDiscount parameter, instead of being a
+// separate coordinated step. Real feedback: Daryl was reading the raw
+// generated discount code out loud character by character, which sounds
+// awkward in speech. The new approach embeds the code straight into the
+// checkout URL (Shopify auto-applies discount codes passed as a URL
+// parameter) so Daryl never sees or needs to say the raw code at all.
+//
+// This file is left in place (not deleted) purely so nothing 404s if the
+// old generate_discount_code tool hasn't been removed from the Vapi
+// dashboard yet -- but the prompt no longer instructs Daryl to call it, and
+// this tool should be removed from the assistant's tools in Vapi once
+// confirmed unused.
+//
+// Everything below is the original implementation, unchanged, kept working
+// during the transition.
+//
 // Voice-mode equivalent of the @@DISCOUNT_CODE@@ placeholder in api/chat.js.
 // Unlike add_to_cart, this one IS a normal server-side Vapi Custom Tool (a
 // real Server URL configured in the dashboard) -- generating a discount code
