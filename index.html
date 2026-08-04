@@ -840,7 +840,7 @@
       <img src="/crew-chief.png" alt="Daryl, rucRak's Crew Chief">
       <div class="cc-caption">DARYL · ON DUTY</div>
     </div>
-    <a class="chat-home-link" href="https://rucrak.com/" target="_blank" rel="noopener noreferrer" title="Back to rucrak.com">← rucrak.com</a>
+    <a class="chat-home-link" href="https://rucrak.com/" target="_blank" rel="noopener noreferrer" title="Back to rucrak.com">Continue Shopping →</a>
     <button class="chat-panel-close" id="chatPanelClose" type="button" title="Close chat" aria-label="Close chat">&times;</button>
 <div class="app">
 
@@ -1369,7 +1369,7 @@ async function addToShopifyCart(cartInstruction){
     }
     const data = await res.json();
     setStoredCartId(data.cartId); // may be a freshly-created cart if the old ID was stale
-    addMessage('bot', `✅ Added **${label}** to your cart. Head to checkout here: ${data.checkoutUrl}`);
+    addMessage('bot', `✅ Added **${label}** to your cart. Head to checkout here: ${data.checkoutUrl} — or hit **Continue Shopping** up top if you want to add more or double check what's in there.`);
   } catch(err){
     console.error('Cart add failed:', err);
     addMessage('bot', `Hmm, that didn't actually make it into your cart — might need to add ${label} yourself on the site, sorry about that.`);
