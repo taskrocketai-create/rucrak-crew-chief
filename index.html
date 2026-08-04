@@ -1299,6 +1299,31 @@ function getStoredCartId(){
 function setStoredCartId(cartId){
   try { localStorage.setItem(CART_ID_STORAGE_KEY, cartId); }
   catch(e){ /* non-fatal -- worst case, a new cart gets created next time */ }
+  syncClassicCartCookie(cartId);
+}
+
+// Attempt to sync the Storefront API cart into the site's own classic cart
+// cookie, so that using the site's native "Add to Cart" buttons (outside of
+// Daryl entirely) lands in the SAME cart instead of a separate, disconnected
+// one -- a real gap a customer flagged directly. This is an experiment, not
+// a guaranteed fix: Shopify's own documentation describes cart
+// interoperability between the classic cookie-based cart and the Storefront
+// API cart as still rolling out, not universally available. The classic
+// cart cookie's value is the "token" portion of a Storefront cart ID (the
+// part before any "?key=" secret) -- gid://shopify/Cart/{token} or
+// gid://shopify/Cart/{token}?key={secret} either way, extract just the
+// token. Wrapped defensively since this touches document.cookie directly
+// and should never break the actual cart functionality if it fails.
+function syncClassicCartCookie(cartId){
+  try {
+    if(!cartId) return;
+    const afterPrefix = cartId.replace('gid://shopify/Cart/', '');
+    const token = afterPrefix.split('?')[0];
+    if(!token) return;
+    document.cookie = `cart=${token}; path=/; max-age=1209600; SameSite=Lax`;
+  } catch(e){
+    console.error('Could not sync classic cart cookie (non-fatal, checkout link still works either way):', e);
+  }
 }
 
 // Ensures a cart ID exists before starting a voice call, since Daryl needs
