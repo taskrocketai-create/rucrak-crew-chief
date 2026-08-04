@@ -1,20 +1,4 @@
 (function() {
-  // rucRak Crew Chief (Daryl) widget loader -- Shadow DOM isolates the
-  // widget's own CSS/HTML from the host page in both directions.
-  //
-  // Fix history on this file, since it's had a few real bugs:
-  // 1. Originally injected CSS globally -- clobbered the host page's fonts.
-  //    Fixed by moving everything into a Shadow DOM.
-  // 2. Vapi's own default call button lives outside our shadow root (Vapi's
-  //    SDK has no idea we're using one) -- fixed with a separate global
-  //    style rule just for hiding that one element.
-  // 3. This file's CSS variables (--orange etc.) were declared via :root,
-  //    which inside a shadow root refers to the REAL page's root, not our
-  //    shadow tree -- so the variables never actually reached our own
-  //    elements, and everything depending on them (colors, mainly) came up
-  //    empty. Fixed by using :host instead, which is the correct selector
-  //    for shadow-tree-wide custom properties.
-
   var globalHideVapiBtn = document.createElement('style');
   globalHideVapiBtn.textContent = '.vapi-btn{ display: none !important; }';
   document.head.appendChild(globalHideVapiBtn);
@@ -30,11 +14,6 @@
   document.head.appendChild(fontLink);
 
   var host = document.createElement('div');
-  // Something on the host page (likely a generic "hide until ready" rule
-  // targeting bare/last-appended elements) was setting display:none on this
-  // container -- confirmed live in a real embed test. Force it visible with
-  // !important directly on the element itself, which beats essentially any
-  // stylesheet rule regardless of what's doing the hiding.
   host.style.setProperty('display', 'block', 'important');
   document.body.appendChild(host);
   var root = host.attachShadow({ mode: 'open' });
@@ -51,6 +30,8 @@
 
 // System prompt now lives server-side in api/chat.js — never expose it or your API key in the browser.
 const CHAT_ENDPOINT = 'https://rucrak-crew-chief.vercel.app/api/chat'; // change to your deployed API URL if hosted separately
+const CART_ADD_ENDPOINT = 'https://rucrak-crew-chief.vercel.app/api/cart-add'; // change alongside CHAT_ENDPOINT if hosted separately
+const CART_CREATE_ENDPOINT = 'https://rucrak-crew-chief.vercel.app/api/cart-create'; // change alongside CHAT_ENDPOINT if hosted separately
 
 let messages = [];
 let pendingImages = []; // array of { base64, mediaType, previewSrc } — cleared after send
@@ -379,6 +360,83 @@ function setThinking(on){
 }
 
 
+// Core cart-add logic, shared between text mode and voice mode -- both need
+// the exact same real Shopify AJAX Cart API call, just with different ways
+// of reporting the outcome back (a chat message vs. an injected system
+// message into a live call). Same-origin only: this resolves correctly when
+// the widget is actually embedded on rucrak.com (real cart session/cookies
+// Unified cart system (text AND voice) -- both now go through Shopify's
+// Storefront API via our own backend, instead of text mode's old
+// /cart/add.js AJAX approach. Real reason for this rebuild: Shopify's own
+// community confirms the classic cookie-based cart and the Storefront API
+// cart are NOT reliably interoperable -- bridging the two risked ending up
+// with two separate, unsynced carts depending on which mode a customer
+// used. One consistent cart ID, stored here, used by both modes.
+const CART_ID_STORAGE_KEY = 'rucrak_crew_chief_cart_id';
+
+function getStoredCartId(){
+  try { return localStorage.getItem(CART_ID_STORAGE_KEY); }
+  catch(e){ return null; } // localStorage can throw in some embedded/private-browsing contexts
+}
+function setStoredCartId(cartId){
+  try { localStorage.setItem(CART_ID_STORAGE_KEY, cartId); }
+  catch(e){ /* non-fatal -- worst case, a new cart gets created next time */ }
+}
+
+// Ensures a cart ID exists before starting a voice call, since Daryl needs
+// it passed in via variableValues at call-start time (variableValues can't
+// be updated once a call is already in progress, per Vapi's own docs) --
+// creates a fresh cart if none is stored yet. Returns the cart ID, or an
+// empty string if creation fails (the voice-mode tool falls back to
+// creating its own cart in that case, per api/_cart.js).
+async function ensureCartId(){
+  const existing = getStoredCartId();
+  if(existing) return existing;
+  try {
+    const res = await fetch(CART_CREATE_ENDPOINT, { method: 'POST' });
+    if(!res.ok) throw new Error(`Cart create failed (${res.status})`);
+    const data = await res.json();
+    setStoredCartId(data.cartId);
+    return data.cartId;
+  } catch(err){
+    console.error('Could not pre-create a cart before starting voice mode (non-fatal, tool will create one itself):', err);
+    return '';
+  }
+}
+
+// Text mode: calls our backend, which calls Shopify's Storefront API.
+// Reports the outcome as a normal chat message, using the cart's real
+// checkoutUrl rather than a generic /checkout link.
+async function addToShopifyCart(cartInstruction){
+  const label = cartInstruction.label || 'that item';
+  try {
+    const res = await fetch(CART_ADD_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        cartId: getStoredCartId(),
+        variantId: cartInstruction.variantId,
+        quantity: cartInstruction.quantity || 1
+      })
+    });
+    if(!res.ok) throw new Error(`Cart add failed (${res.status})`);
+    const data = await res.json();
+    setStoredCartId(data.cartId); // may be a freshly-created cart if the old ID was stale
+    addMessage('bot', `✅ Added **${label}** to your cart. Head to checkout here: ${data.checkoutUrl}`);
+  } catch(err){
+    console.error('Cart add failed:', err);
+    addMessage('bot', `Hmm, that didn't actually make it into your cart — might need to add ${label} yourself on the site, sorry about that.`);
+  }
+}
+
+// Voice mode's add_to_cart is now a fully server-side Vapi tool (see
+// api/add-to-cart-ack.js) -- the browser is no longer involved in
+// performing the mutation at all, only in supplying the cart ID at
+// call-start time (see startVoiceMode, which reads getStoredCartId() into
+// variableValues). Vapi delivers tool-call notifications to EITHER the
+// client OR a configured server URL, never both, so there's intentionally
+// no browser-side handler for add_to_cart anymore.
+
 async function sendMessage(){
   const text = input.value.trim();
   const hasImages = pendingImages.length > 0;
@@ -433,6 +491,16 @@ async function sendMessage(){
     typingDiv.remove();
     addMessage('bot', replyText);
     messages.push({role:'assistant', content: replyText});
+
+    // Real cart-add, via Shopify's own AJAX Cart API. This is a relative URL
+    // on purpose — it only resolves correctly when this widget is actually
+    // embedded on rucrak.com itself (same-origin, so the customer's real
+    // cart session/cookies apply automatically). On the standalone Vercel
+    // test site this will fail, which is expected and fine — there's no real
+    // Shopify cart to add to there anyway.
+    if(data.addToCart && data.addToCart.variantId){
+      await addToShopifyCart(data.addToCart);
+    }
   } catch(err){
     typingDiv.remove();
     addMessage('bot', "Well shoot, I'm having some trouble getting connected right now — nothing you did wrong. Give it a minute and try again.");
@@ -673,9 +741,22 @@ function attachVapiListeners(vapi){
   // see flushVoiceTranscriptToText above. Requires "transcript" to be
   // enabled in the assistant's clientMessages in the Vapi dashboard; if
   // it's not receiving these, double-check that setting there.
+  //
+  // General tool-calls logging kept here as diagnostic scaffolding for any
+  // future CLIENT-side tools (no server URL) -- add_to_cart used to be
+  // handled here, but it's now a fully server-side tool (see
+  // api/add-to-cart-ack.js), and Vapi delivers a tool call to EITHER the
+  // client OR a configured server URL, never both -- so there's
+  // intentionally no dispatch for it here anymore.
   vapi.on('message', (message)=>{
     if(message && message.type === 'transcript' && message.transcriptType === 'final' && message.transcript){
       voiceTranscriptBuffer.push({ role: message.role === 'user' ? 'user' : 'assistant', text: message.transcript });
+    }
+    // Log every non-transcript message type seen during a call -- cheap
+    // insurance for debugging tool-calls delivery without flooding the
+    // console with every single transcript chunk.
+    if(message && message.type && message.type !== 'transcript'){
+      console.log('[voice] message type:', message.type, message);
     }
   });
 
@@ -750,15 +831,16 @@ function startVoiceMode(){
   voiceStartContext = null; // one-shot, don't leak into the next call
 
   vapiReadyPromise
-    .then((vapi)=>{
+    .then(async (vapi)=>{
       // Assistant (model, voice, and the full system prompt) is managed entirely in the
       // Vapi dashboard now — one single source of truth, no duplicated prompt to drift
       // out of sync with. Edit the assistant there, not here.
       // vapiSDK.run() above only sets up the instance — it doesn't start a call on its own,
       // so we always explicitly start one here in response to the tap.
       if(!voiceCallActive){
+        const cartIdForCall = await ensureCartId();
         const startResult = vapi.start(CREW_CHIEF_ASSISTANT_ID, {
-          variableValues: { priorContext: contextForCall }
+          variableValues: { priorContext: contextForCall, cartId: cartIdForCall }
         });
         if(startResult && typeof startResult.catch === 'function'){
           startResult.catch((err)=>{
