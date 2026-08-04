@@ -27,6 +27,20 @@
 // 4. Also found that Shopify's classic cookie-based cart and the Storefront
 //    API cart are documented as not reliably interoperable -- bridging
 //    between the two risked two separate, unsynced carts.
+// 5. Real customer report: Daryl confidently said an item was added, but
+//    clicking through to the actual cart showed it empty. Root cause: when
+//    cartId didn't arrive correctly (missing, or a stale/invalid ID), this
+//    endpoint was silently creating a BRAND NEW cart as a fallback and
+//    reporting success -- which was real, but to a cart the browser has no
+//    way of ever learning about, since voice-mode tool calls never reach
+//    the browser at all (that's the whole reason this is server-side).
+//    Text mode never has this problem, since the browser gets the actual
+//    result in the same request/response and immediately knows the truth.
+//    Fix: removed the silent-fallback behavior for voice specifically --
+//    if the cart can't be reached with the ID actually provided, this now
+//    reports an honest failure instead of quietly substituting a different
+//    cart nobody can find. Consistent with the "never claim success you
+//    don't have" principle already built into the rest of this prompt.
 //
 // Current design: fully server-side, using Shopify's Storefront API
 // directly (see api/_cart.js) with a cartId the model passes as a tool
@@ -39,7 +53,7 @@
 // full explanation, including handling a batch of more than one tool call
 // per request.
 
-const { addLineToCartWithFallback } = require('./_cart.js');
+const { addLineToCart } = require('./_cart.js');
 
 function safeSingleLine(str) {
   return String(str || "").replace(/\r?\n/g, " ").trim();
@@ -62,9 +76,7 @@ async function handleOneCall(toolCall) {
     const label = args.label || "that item";
     // If cartId arrives as the literal unresolved template text (e.g. the
     // model echoed "{{cartId}}" because variableValues wasn't actually set
-    // for this call), treat it as no cart ID at all rather than trying to
-    // use that literal string -- addLineToCartWithFallback creates a fresh
-    // cart automatically in that case.
+    // for this call), treat it as no cart ID at all.
     const rawCartId = args.cartId;
     const cartId = (rawCartId && !rawCartId.includes("{{")) ? rawCartId : null;
 
@@ -72,15 +84,19 @@ async function handleOneCall(toolCall) {
       return { toolCallId, result: safeSingleLine(`No variantId was provided for "${label}", so nothing was added. Tell the customer honestly and offer to help them add it on the site directly.`) };
     }
 
-    const result = await addLineToCartWithFallback(cartId, variantId, quantity);
-    const newCartNote = result.createdNewCart ? " (started a fresh cart since the previous one wasn't found)" : "";
+    if (!cartId) {
+      console.error("add_to_cart called without a usable cartId -- refusing to silently create an orphaned cart the customer could never find.");
+      return { toolCallId, result: safeSingleLine(`Couldn't reach the customer's cart (no valid cart ID came through) -- do NOT claim this was added, be honest that something went wrong on this end, and offer to help them add "${label}" themselves on the site, or suggest switching to typing so it can be added there instead.`) };
+    }
+
+    const { checkoutUrl } = await addLineToCart(cartId, variantId, quantity);
     return {
       toolCallId,
-      result: safeSingleLine(`Successfully added "${label}" to the cart${newCartNote}. Checkout link: ${result.checkoutUrl}. Confirm this naturally to the customer now -- you don't need to wait for anything further, this already happened.`)
+      result: safeSingleLine(`Successfully added "${label}" to the cart. Checkout link: ${checkoutUrl}. Confirm this naturally to the customer now -- you don't need to wait for anything further, this already happened.`)
     };
   } catch (err) {
     console.error("add-to-cart-ack error for one call (non-fatal to the call):", err.message);
-    return { toolCallId, result: safeSingleLine("The cart update failed. Be honest with the customer that it didn't go through, don't claim success, and offer to help them add it on the site directly instead.") };
+    return { toolCallId, result: safeSingleLine(`The cart update failed (${err.message}). Be honest with the customer that it didn't go through, don't claim success, and offer to help them add it on the site directly instead.`) };
   }
 }
 
