@@ -160,6 +160,14 @@
   }
   @media (max-width:620px){
     .crew-chief-card{ display:none; }
+    /* The button's position above is calculated relative to the character
+       card, which is hidden at this width -- without this override it'd
+       float in empty space with nothing to relate to. Back to a simple
+       top-of-panel position instead. */
+    .chat-home-link{
+      bottom:auto; top:12px; left:12px;
+      transform:none;
+    }
   }
   @media (max-width:480px){
     /* On a phone, a small floating box in the corner just doesn't work —
@@ -212,7 +220,8 @@
 
   .chat-home-link{
     position:absolute;
-    top:-16px; left:-95px;
+    bottom:525px; left:-77px;
+    transform:translateX(-50%);
     z-index:3;
     font-family:'Inter',sans-serif;
     font-size:13px;
@@ -221,7 +230,7 @@
     text-decoration:none;
     background:var(--orange);
     padding:8px 14px;
-    border-radius:14px 14px 14px 3px;
+    border-radius:14px;
     box-shadow:0 3px 10px rgba(255,106,19,0.45);
     white-space:nowrap;
   }
