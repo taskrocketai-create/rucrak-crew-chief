@@ -348,7 +348,15 @@ function addMessage(role, text, imagePreviewSrcs){
   }
   div.appendChild(body);
   log.appendChild(div);
-  log.scrollTop = log.scrollHeight;
+  if(role === 'user'){
+    log.scrollTop = log.scrollHeight; // short messages -- showing the bottom (their own new message) is correct here
+  } else {
+    // Real feedback: scrolling to the very bottom after a bot reply meant
+    // long answers landed with the customer seeing the END of the answer
+    // first, having to scroll back up to read from the start -- confusing
+    // on first use. Scroll to the TOP of the new message instead.
+    log.scrollTop = Math.max(0, div.offsetTop - 12);
+  }
   return div;
 }
 
