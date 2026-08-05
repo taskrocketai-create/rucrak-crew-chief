@@ -20,12 +20,19 @@
     },
     "api/weekly-report.js": {
       "maxDuration": 30
+    },
+    "api/check-price-drift.js": {
+      "maxDuration": 30
     }
   },
   "crons": [
     {
       "path": "/api/weekly-report",
       "schedule": "0 12 * * 1"
+    },
+    {
+      "path": "/api/check-price-drift",
+      "schedule": "0 13 * * *"
     }
   ]
 }
