@@ -1,10 +1,18 @@
 // api/cart-add.js
 //
-// Called directly by the browser in TEXT mode to add an item to the cart --
+// Called directly by the browser in TEXT mode to add item(s) to the cart --
 // the voice-mode equivalent path is api/add-to-cart-ack.js, which Vapi
 // calls as a server-side tool instead. Both ultimately call the same
 // addLineToCartWithFallback in api/_cart.js, so text and voice always
 // operate on the same underlying Storefront API cart system.
+//
+// Accepts MULTIPLE items in one request (items: [{variantId, quantity}]) --
+// see api/_cart.js for why this matters: sending everything in one real
+// API call removes the need for the model to reliably chain multiple
+// separate add actions itself, which is exactly where real add/upsell
+// failures were happening (a main product would get added, but a
+// necessary accessory or extension in the same "yes, add it all" moment
+// would silently get dropped).
 
 const { addLineToCartWithFallback } = require('./_cart.js');
 
@@ -32,12 +40,17 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const { cartId, variantId, quantity, applyDiscount } = req.body || {};
-    if (!variantId) {
-      return res.status(400).json({ error: "variantId is required" });
+    const { cartId, items, applyDiscount } = req.body || {};
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: "items array is required and must have at least one item" });
+    }
+    for (const item of items) {
+      if (!item || !item.variantId) {
+        return res.status(400).json({ error: "every item requires a variantId" });
+      }
     }
 
-    const result = await addLineToCartWithFallback(cartId, variantId, quantity, applyDiscount === true);
+    const result = await addLineToCartWithFallback(cartId, items, applyDiscount === true);
     return res.status(200).json(result);
   } catch (err) {
     console.error("cart-add failed:", err.message);

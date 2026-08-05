@@ -119,13 +119,21 @@ function extractCustomerInfo(replyText) {
 }
 // --- Add-to-cart marker parsing ----------------------------------------------
 // Same pattern again:
-//   @@ADD_TO_CART@@{"variantId":"...","quantity":1,"label":"..."}@@END@@
+//   @@ADD_TO_CART@@{"items":[{"variantId":"...","quantity":1,"label":"..."}],"applyDiscount":false}@@END@@
 // This one is different from the others in one way: it's not just a logging
-// signal, it's actually an instruction the FRONTEND acts on (calling
-// Shopify's real /cart/add.js endpoint from the customer's own browser
-// session). The backend here just extracts and validates the shape — the
-// actual cart mutation happens client-side, since that's the only place with
-// access to the customer's real cart session.
+// signal, it's actually an instruction the FRONTEND acts on (calling our
+// real cart API from the customer's own browser session). The backend here
+// just extracts and validates the shape — the actual cart mutation happens
+// client-side, since that's the only place with access to the customer's
+// real cart session.
+//
+// Accepts MULTIPLE items in one marker -- see api/_cart.js for why this
+// matters: previously this only ever handled one item, requiring the model
+// to reliably remember to send a SECOND marker in a follow-up reply for
+// anything else that needed adding (a necessary accessory/extension
+// alongside a main product) -- and that hand-off is exactly where real,
+// confirmed failures kept happening. One marker, one or more items, one
+// real cart action.
 const ADD_TO_CART_MARKER_RE = /@@ADD_TO_CART@@(.*?)@@END@@/s;
 
 function extractAddToCart(replyText) {
@@ -136,17 +144,27 @@ function extractAddToCart(replyText) {
   let addToCart = null;
   try {
     const parsed = JSON.parse(match[1]);
-    const variantId = String(parsed.variantId || "").trim();
-    const quantity = Number(parsed.quantity) || 1;
-    if (variantId && /^\d+$/.test(variantId) && quantity > 0) {
-      addToCart = {
-        variantId,
-        quantity,
-        label: parsed.label || null,
-        applyDiscount: parsed.applyDiscount === true
-      };
+    let rawItems = Array.isArray(parsed.items) ? parsed.items : [];
+    // Defensive: accept the old flat single-item shape too, in case the
+    // model falls back to it during the prompt transition.
+    if (rawItems.length === 0 && parsed.variantId) {
+      rawItems = [{ variantId: parsed.variantId, quantity: parsed.quantity, label: parsed.label }];
+    }
+    const items = rawItems
+      .map((item) => {
+        const variantId = String((item && item.variantId) || "").trim();
+        const quantity = Number(item && item.quantity) || 1;
+        if (variantId && /^\d+$/.test(variantId) && quantity > 0) {
+          return { variantId, quantity, label: (item && item.label) || null };
+        }
+        return null;
+      })
+      .filter(Boolean);
+
+    if (items.length > 0) {
+      addToCart = { items, applyDiscount: parsed.applyDiscount === true };
     } else {
-      console.error("Add-to-cart marker had an invalid variantId/quantity (non-fatal):", match[1]);
+      console.error("Add-to-cart marker had no valid items (non-fatal):", match[1]);
     }
   } catch (err) {
     console.error("Failed to parse add-to-cart marker JSON (non-fatal):", err.message, "raw:", match[1]);

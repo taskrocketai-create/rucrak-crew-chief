@@ -73,9 +73,20 @@ async function createCart() {
   return { cartId: cart.id, checkoutUrl: cart.checkoutUrl };
 }
 
-// Adds one line item to an existing cart. Returns { checkoutUrl, discountApplied }.
-// Throws if the cart doesn't exist (e.g. an expired/invalid ID) -- callers
-// should catch this and create a fresh cart as a fallback.
+// Adds one or more line items to an existing cart in a SINGLE real API
+// call. Returns { checkoutUrl, discountApplied }. Throws if the cart
+// doesn't exist (e.g. an expired/invalid ID) -- callers should catch this
+// and create a fresh cart as a fallback.
+//
+// items: array of { variantId, quantity }. Shopify's cartLinesAdd mutation
+// natively accepts multiple lines in one call -- this was previously
+// wrapped to only ever send one, which is exactly what caused real,
+// confirmed failures: when a customer needed a main product AND a
+// necessary accessory (e.g. GRUNT + stud extensions) added together, the
+// model had to reliably chain two SEPARATE add actions itself, and that
+// hand-off between them is where it kept dropping the second item, in
+// both text and voice mode. Sending everything in one real call removes
+// the need for that fragile hand-off entirely.
 //
 // applyDiscount: if true, generates a fresh session-specific discount code
 // (see api/_discount.js) and embeds it directly into the returned
@@ -84,7 +95,7 @@ async function createCart() {
 // reads aloud or writes out. If discount generation fails for any reason,
 // the cart-add itself still succeeds; discountApplied just comes back false
 // so the caller can be honest about that specific part not working.
-async function addLineToCart(cartId, variantId, quantity, applyDiscount) {
+async function addLineToCart(cartId, items, applyDiscount) {
   const mutation = `
     mutation AddToCart($cartId: ID!, $lines: [CartLineInput!]!) {
       cartLinesAdd(cartId: $cartId, lines: $lines) {
@@ -93,10 +104,11 @@ async function addLineToCart(cartId, variantId, quantity, applyDiscount) {
       }
     }
   `;
-  const variables = {
-    cartId,
-    lines: [{ merchandiseId: `gid://shopify/ProductVariant/${variantId}`, quantity: quantity || 1 }]
-  };
+  const lines = items.map((item) => ({
+    merchandiseId: `gid://shopify/ProductVariant/${item.variantId}`,
+    quantity: item.quantity || 1
+  }));
+  const variables = { cartId, lines };
   const data = await shopifyStorefrontGraphQL(mutation, variables);
   const errors = data && data.cartLinesAdd && data.cartLinesAdd.userErrors;
   if (errors && errors.length) {
@@ -121,21 +133,22 @@ async function addLineToCart(cartId, variantId, quantity, applyDiscount) {
   return { checkoutUrl, discountApplied };
 }
 
-// Adds a line item, automatically creating a fresh cart and retrying once
-// if the given cart ID turns out to be invalid/expired -- this is the
-// function both cart-add endpoints should actually call, rather than
-// addLineToCart directly, so a stale ID never just fails outright.
-async function addLineToCartWithFallback(cartId, variantId, quantity, applyDiscount) {
+// Adds one or more line items, automatically creating a fresh cart and
+// retrying once if the given cart ID turns out to be invalid/expired --
+// this is the function both cart-add endpoints should actually call,
+// rather than addLineToCart directly, so a stale ID never just fails
+// outright.
+async function addLineToCartWithFallback(cartId, items, applyDiscount) {
   if (cartId) {
     try {
-      const result = await addLineToCart(cartId, variantId, quantity, applyDiscount);
+      const result = await addLineToCart(cartId, items, applyDiscount);
       return { cartId, checkoutUrl: result.checkoutUrl, discountApplied: result.discountApplied, createdNewCart: false };
     } catch (err) {
       console.error("addLineToCart failed with existing cartId, creating a fresh cart instead (non-fatal):", err.message);
     }
   }
   const newCart = await createCart();
-  const result = await addLineToCart(newCart.cartId, variantId, quantity, applyDiscount);
+  const result = await addLineToCart(newCart.cartId, items, applyDiscount);
   return { cartId: newCart.cartId, checkoutUrl: result.checkoutUrl, discountApplied: result.discountApplied, createdNewCart: true };
 }
 

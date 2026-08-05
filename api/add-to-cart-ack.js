@@ -51,6 +51,16 @@
 //    was applied, which is genuinely true. This also removed the separate
 //    generate_discount_code tool and @@DISCOUNT_CODE@@ placeholder
 //    entirely -- one unified action instead of two coordinated ones.
+// 7. Real, confirmed multi-item failure (customer + CEO both hit this
+//    independently): when a customer needed a main product AND a
+//    necessary accessory/extension added together, the model had to
+//    reliably call this tool twice in a row -- once per item -- and that
+//    hand-off between calls is exactly where it kept dropping the second
+//    item, in both text and voice mode. Fixed by accepting an ITEMS ARRAY
+//    instead of a single flat item -- Shopify's own cartLinesAdd mutation
+//    already natively supports multiple lines in one call, so this sends
+//    everything in ONE real API call instead of requiring the model to
+//    chain several separate ones.
 //
 // Current design: fully server-side, using Shopify's Storefront API
 // directly (see api/_cart.js) with a cartId the model passes as a tool
@@ -81,9 +91,16 @@ async function handleOneCall(toolCall) {
       }
     }
 
-    const variantId = args.variantId;
-    const quantity = Number(args.quantity) || 1;
-    const label = args.label || "that item";
+    let items = Array.isArray(args.items) ? args.items : [];
+    // Defensive: if the model somehow still sends the old flat shape
+    // (variantId/quantity/label at the top level) instead of an items
+    // array, treat that as a single-item array rather than failing --
+    // costs nothing and avoids a hard break during the prompt transition.
+    if (items.length === 0 && args.variantId) {
+      items = [{ variantId: args.variantId, quantity: args.quantity, label: args.label }];
+    }
+    items = items.filter((item) => item && item.variantId);
+
     const applyDiscount = args.applyDiscount === true || args.applyDiscount === "true";
     // If cartId arrives as the literal unresolved template text (e.g. the
     // model echoed "{{cartId}}" because variableValues wasn't actually set
@@ -91,24 +108,27 @@ async function handleOneCall(toolCall) {
     const rawCartId = args.cartId;
     const cartId = (rawCartId && !rawCartId.includes("{{")) ? rawCartId : null;
 
-    if (!variantId) {
-      return { toolCallId, result: safeSingleLine(`No variantId was provided for "${label}", so nothing was added. Tell the customer honestly and offer to help them add it on the site directly.`) };
+    if (items.length === 0) {
+      return { toolCallId, result: safeSingleLine(`No valid items were provided, so nothing was added. Tell the customer honestly and offer to help them add it on the site directly.`) };
     }
+
+    const labelList = items.map((item) => item.label || "an item").join(", ");
 
     if (!cartId) {
       console.error("add_to_cart called without a usable cartId -- refusing to silently create an orphaned cart the customer could never find.");
-      return { toolCallId, result: safeSingleLine(`Couldn't reach the customer's cart (no valid cart ID came through) -- do NOT claim this was added, be honest that something went wrong on this end, and offer to help them add "${label}" themselves on the site, or suggest switching to typing so it can be added there instead.`) };
+      return { toolCallId, result: safeSingleLine(`Couldn't reach the customer's cart (no valid cart ID came through) -- do NOT claim "${labelList}" was added, be honest that something went wrong on this end, and offer to help them add it themselves on the site, or suggest switching to typing so it can be added there instead.`) };
     }
 
-    const { checkoutUrl, discountApplied } = await addLineToCart(cartId, variantId, quantity, applyDiscount);
+    const normalizedItems = items.map((item) => ({ variantId: item.variantId, quantity: Number(item.quantity) || 1 }));
+    const { checkoutUrl, discountApplied } = await addLineToCart(cartId, normalizedItems, applyDiscount);
     const discountNote = applyDiscount
       ? (discountApplied
           ? " A $50 discount has also been applied automatically -- it's already baked into the checkout link, so don't read out or mention any code, just tell them the discount is applied."
-          : " The discount specifically didn't apply this time (the item itself was still added fine) -- be honest that the discount part didn't go through if they ask, don't claim it's there.")
+          : " The discount specifically didn't apply this time (the item(s) themselves were still added fine) -- be honest that the discount part didn't go through if they ask, don't claim it's there.")
       : "";
     return {
       toolCallId,
-      result: safeSingleLine(`Successfully added "${label}" to the cart.${discountNote} Checkout link: ${checkoutUrl}. Confirm this naturally to the customer now -- you don't need to wait for anything further, this already happened.`)
+      result: safeSingleLine(`Successfully added "${labelList}" to the cart.${discountNote} Checkout link: ${checkoutUrl}. Confirm this naturally to the customer now -- you don't need to wait for anything further, this already happened.`)
     };
   } catch (err) {
     console.error("add-to-cart-ack error for one call (non-fatal to the call):", err.message);
