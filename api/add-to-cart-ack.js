@@ -61,6 +61,20 @@
 //    already natively supports multiple lines in one call, so this sends
 //    everything in ONE real API call instead of requiring the model to
 //    chain several separate ones.
+// 8. Real feedback (again): even after applyDiscount existed, both the
+//    discount and the accessory follow-up kept getting skipped -- because
+//    both still depended on the model reliably deciding to do something
+//    correctly (setting a flag, remembering a follow-up), the same class
+//    of unreliability that caused the earlier multi-item bugs. Fixed by
+//    moving discount eligibility out of the model's hands entirely --
+//    api/_cart.js now checks the real items being added against the actual
+//    qualifying-product list itself, deterministically, no flag needed.
+//    The accessory follow-up isn't fully mechanizable in voice mode the
+//    way it is in text mode (text mode hardcodes it directly into the
+//    guaranteed confirmation message), so this endpoint instead spells out
+//    the exact required next action directly in the tool result text
+//    whenever a qualifying product was added, rather than just trusting
+//    the prompt's general instruction to remember it.
 //
 // Current design: fully server-side, using Shopify's Storefront API
 // directly (see api/_cart.js) with a cartId the model passes as a tool
@@ -101,7 +115,6 @@ async function handleOneCall(toolCall) {
     }
     items = items.filter((item) => item && item.variantId);
 
-    const applyDiscount = args.applyDiscount === true || args.applyDiscount === "true";
     // If cartId arrives as the literal unresolved template text (e.g. the
     // model echoed "{{cartId}}" because variableValues wasn't actually set
     // for this call), treat it as no cart ID at all.
@@ -120,15 +133,27 @@ async function handleOneCall(toolCall) {
     }
 
     const normalizedItems = items.map((item) => ({ variantId: item.variantId, quantity: Number(item.quantity) || 1 }));
-    const { checkoutUrl, discountApplied } = await addLineToCart(cartId, normalizedItems, applyDiscount);
-    const discountNote = applyDiscount
+    // Discount eligibility is determined automatically from the real items
+    // being added (see api/_cart.js) -- not from a flag the model has to
+    // remember to set. Real feedback: even after adding that flag, both
+    // the discount and the accessory follow-up kept getting skipped, since
+    // it still depended on the model reliably deciding to do something.
+    const { checkoutUrl, discountApplied, includesQualifyingProduct } = await addLineToCart(cartId, normalizedItems);
+    const discountNote = includesQualifyingProduct
       ? (discountApplied
           ? " A $50 discount has also been applied automatically -- it's already baked into the checkout link, so don't read out or mention any code, just tell them the discount is applied."
           : " The discount specifically didn't apply this time (the item(s) themselves were still added fine) -- be honest that the discount part didn't go through if they ask, don't claim it's there.")
       : "";
+    // Spelling out the accessory follow-up directly in the result text,
+    // not just relying on the prompt's general instruction to remember it
+    // -- real feedback showed that general instruction alone wasn't
+    // reliably followed even after several rounds of strengthening it.
+    const accessoryNote = includesQualifyingProduct
+      ? " This includes a main product (GRUNT/GUNNY), so your very next sentence after confirming this must ask what they'll mainly be using it for (cargo, bikes, gear) to recommend one accessory -- do this now, in this same turn, don't skip it."
+      : "";
     return {
       toolCallId,
-      result: safeSingleLine(`Successfully added "${labelList}" to the cart.${discountNote} Checkout link: ${checkoutUrl}. Confirm this naturally to the customer now -- you don't need to wait for anything further, this already happened.`)
+      result: safeSingleLine(`Successfully added "${labelList}" to the cart.${discountNote} Checkout link: ${checkoutUrl}.${accessoryNote} Confirm this naturally to the customer now -- you don't need to wait for anything further, this already happened.`)
     };
   } catch (err) {
     console.error("add-to-cart-ack error for one call (non-fatal to the call):", err.message);

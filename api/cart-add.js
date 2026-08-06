@@ -13,6 +13,13 @@
 // failures were happening (a main product would get added, but a
 // necessary accessory or extension in the same "yes, add it all" moment
 // would silently get dropped).
+//
+// Discount eligibility no longer depends on a flag the model has to
+// remember to set -- real feedback showed both the discount and the
+// accessory-question follow-up kept getting skipped even after the flag
+// was added, since it was still relying on the model reliably deciding to
+// do something correctly. addLineToCartWithFallback now checks the actual
+// items being added against the real qualifying-product list itself.
 
 const { addLineToCartWithFallback } = require('./_cart.js');
 
@@ -40,7 +47,7 @@ module.exports = async (req, res) => {
   }
 
   try {
-    const { cartId, items, applyDiscount } = req.body || {};
+    const { cartId, items } = req.body || {};
     if (!Array.isArray(items) || items.length === 0) {
       return res.status(400).json({ error: "items array is required and must have at least one item" });
     }
@@ -50,7 +57,7 @@ module.exports = async (req, res) => {
       }
     }
 
-    const result = await addLineToCartWithFallback(cartId, items, applyDiscount === true);
+    const result = await addLineToCartWithFallback(cartId, items);
     return res.status(200).json(result);
   } catch (err) {
     console.error("cart-add failed:", err.message);
