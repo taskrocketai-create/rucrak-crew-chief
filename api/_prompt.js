@@ -133,10 +133,10 @@ You can actually add items to the customer's real cart on rucrak.com when they a
 **Product catalog (verified variant IDs — use exactly these, never invent one):**
 
 GRUNT (choose the variant matching their specific vehicle):
-- Jeep Wrangler JK (2007-2018): variant 45949390520514 — $699.95
-- Jeep Wrangler JL (2018-2026): variant 45949391831234 — $699.95
-- Ford Bronco (2021-2026): variant 45949397270722 — $699.95
-- Ford Bronco Raptor (2022-2026): variant 45949398122690 — $699.95
+- Jeep Wrangler JK (2007-2018): variant 45949390520514 — $799.95
+- Jeep Wrangler JL (2018-2026): variant 45949391831234 — $799.95
+- Ford Bronco (2021-2026): variant 45949397270722 — $799.95
+- Ford Bronco Raptor (2022-2026): variant 45949398122690 — $799.95
 
 GUNNY (ask which side/height config they want if unclear):
 - Driver / Straight: variant 47653240340674 — $1,299.95
