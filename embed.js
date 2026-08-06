@@ -441,16 +441,15 @@ async function ensureCartId(){
 // Reports the outcome as a normal chat message, using the cart's real
 // checkoutUrl rather than a generic /checkout link.
 async function addToShopifyCart(cartInstruction){
-  const label = cartInstruction.label || 'that item';
+  const items = Array.isArray(cartInstruction.items) ? cartInstruction.items : [];
+  const labelList = items.map(i => i.label || 'that item').join(', ');
   try {
     const res = await fetch(CART_ADD_ENDPOINT, {
       method: 'POST',
       headers: { 'Content-Type': 'application/json' },
       body: JSON.stringify({
         cartId: getStoredCartId(),
-        variantId: cartInstruction.variantId,
-        quantity: cartInstruction.quantity || 1,
-        applyDiscount: cartInstruction.applyDiscount === true
+        items: items.map(i => ({ variantId: i.variantId, quantity: i.quantity || 1 }))
       })
     });
     if(!res.ok){
@@ -459,14 +458,28 @@ async function addToShopifyCart(cartInstruction){
     }
     const data = await res.json();
     setStoredCartId(data.cartId); // may be a freshly-created cart if the old ID was stale
-    // The discount, if requested, is already baked into data.checkoutUrl as
-    // a URL parameter (Shopify auto-applies it) -- no raw code to show here
-    // at all, just a plain confirmation that it's been applied.
-    const discountLine = cartInstruction.applyDiscount && data.discountApplied ? ' A $50 discount is already applied.' : '';
-    addMessage('bot', `✅ Added **${label}** to your cart.${discountLine} Head to checkout here: ${data.checkoutUrl} — or hit **Continue Shopping** up top if you want to add more or double check what's in there.`);
+    // Discount eligibility is now determined automatically by the backend
+    // from the real items being added (see api/_cart.js) -- no flag from
+    // Daryl needed. The discount itself, when it applies, is already baked
+    // into data.checkoutUrl as a URL parameter (Shopify auto-applies it) --
+    // no raw code to show here at all, just a plain confirmation.
+    const discountLine = data.discountApplied ? ' A $50 discount is already applied.' : '';
+    // Real feedback: even after building a working upsell flow, both the
+    // discount and the accessory follow-up kept getting skipped in real
+    // conversations -- both were depending on Daryl reliably remembering
+    // to do something in his own next turn, the same class of unreliability
+    // that caused the original multi-item cart bugs. Fixed the same way:
+    // moved it out of the model's hands. When the add includes a real
+    // qualifying product (GRUNT/GUNNY), this hardcodes the accessory
+    // question directly into this guaranteed, code-generated confirmation
+    // -- it will show up every single time, not just when Daryl remembers.
+    const accessoryLine = data.includesQualifyingProduct
+      ? ' Want me to point you toward a couple accessories too? What are you mainly hauling — cargo, bikes, gear?'
+      : '';
+    addMessage('bot', `✅ Added **${labelList}** to your cart.${discountLine} Head to checkout here: ${data.checkoutUrl} — or hit **Continue Shopping** up top if you want to add more or double check what's in there.${accessoryLine}`);
   } catch(err){
     console.error('Cart add failed:', err);
-    addMessage('bot', `Hmm, that didn't actually make it into your cart — might need to add ${label} yourself on the site, sorry about that.`);
+    addMessage('bot', `Hmm, that didn't actually make it into your cart — might need to add ${labelList || 'that'} yourself on the site, sorry about that.`);
   }
 }
 
