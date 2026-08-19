@@ -308,11 +308,52 @@ Key steps & principles:
 - Hinge/pivot assembly: nylon washers are MANDATORY, not optional — skipping them means the flip mechanism won't work correctly or will wear prematurely. Pivot hardware should be snug enough to engage the nylon lock nut's threads but NOT cranked down hard, or the basket won't pivot between Home/Gear/Bike positions.
 - Basket-to-frame bolts thread into ALUMINUM — snug only ("good and snug," about a half turn past hand-tight), overtightening strips the threads.
 - Basket seats into Home position via tight tolerances — pressing a knee/thigh against the frame to hold it plumb while seating it is a real, useful field trick.
-- Table legs: two different part sets depending on whether the mounting plate is front or back ("PB"/plate-back vs "PF"/plate-front, or similarly labeled) — using the wrong set is a real, documented mistake.
+- **Table legs — PF vs PB, confirmed directly from the parts documentation, not a vague "two different sets":** which leg part is used depends entirely on which side of the mounting plate it's attached to. Mounted to the FRONT side of the mounting plate → PF legs. Mounted to the BACK side → PB legs. This is a real, deliberate configuration choice (tied to the same front/back mounting plate decision covered above for wheel offset), not a manufacturing inconsistency — if someone's legs don't match what they expected, first confirm which side their mounting plate is actually on before assuming a wrong part got shipped.
 - NO NUMERIC TORQUE SPEC EXISTS ANYWHERE in any source. It's intentionally "good and snug," not a foot-pound number. Never invent a torque value — always use this same non-numeric language.
 - Maintenance: the hinge hardware and the feet see repeated mechanical stress every time the tailgate opens/closes and should be periodically rechecked/retightened.
 
-=== GUNNY / SERGEANT SWING-ARM HARDWARE — SAFETY NOTE (Sergeant not currently in production) ===
+=== GEN 10 GRUNT PARTS REFERENCE (cross-referenced customer part # ↔ in-house part #, verified directly against both the engineering exploded diagram and the customer parts list — quantities below are the CONFIRMED-CORRECT ones after resolving real discrepancies between the two source documents) ===
+Use this when someone asks what a part is called, how many of something they should have, or references a part by either numbering system. Customer part # is what's printed on the customer-facing parts list; in-house # is the internal engineering part number (useful if escalating to Jason/support, not something a customer would normally reference themselves).
+
+Structural parts (customer # / in-house # / description / qty per unit):
+- 1 / 0417-8-1 / Basket / 1
+- 2 / 0417-8-2 / Basket Triangle / 2
+- 3 / 0417-8-3.1 / Cover Plate / 1
+- 4 / 0417-8-4 / Mounting Plate / 1
+- 5 / 0417-8-5 / Hinge Plate / 1
+- 15 / 0417-8-15 / Hinge Gusset / 2
+- 6 / 0417-8-6-36 / Table / 1
+- 7.0 / 0417-8-7L-PF / Table Leg, Front-mount plate, Left / 1
+- 7.1 / 0417-8-7R-PF / Table Leg, Front-mount plate, Right / 1
+- 8.0 / (PB equivalent, not shown in this diagram) / Table Leg, Back-mount plate, Left / 1
+- 8.1 / (PB equivalent, not shown in this diagram) / Table Leg, Back-mount plate, Right / 1
+- 9 / 0417-8-9 / Horizontal Short Tube / 2
+- 10 / 0417-8-10 / Vertical Long Tube / 2
+- 130 / — / Load Handler / 1
+- 105 / — / Flag Stand / 1
+- 500 / — / Hitch Stabilizer (for 2" hitch) / 1
+- 106 / — / Leveler Foot / 2
+
+Hardware (customer # / description / qty per unit):
+- 206 / Nylon Washer Black, 5/16" ID / 10
+- 207 / 5/16" Stainless Washer / 16
+- 203 / Button Head Bolt, 5/16" x 1" / 6
+- 217 / Button Head Bolt, 5/16" x 2-1/2" / 6
+- 201 / Button Head Bolt, 5/16" x 2-1/4" / 2
+- 204 / Button Head Bolt, 5/16" x 3/4" / 4
+- 216 / Button Head Bolt, 5/16" x 2" / 2
+- 208 / Button Head Bolt, 3/8"-24 x 3/4" / 4
+- 209 / Stainless Steel Nut, 3/8"-24 / 4
+- 205 / Nylon Locknut, 5/16-18 / 16
+- 210 / Medium 3-Arm Knob w/ stud, 5/16-18 / 2
+- 215 / Pull Ring Detent Pin, 5/16" x 2" / 2
+- 211 / Pull Ring Detent Pin, 1/4" x 2" / 2
+- 212 / 4" Lanyard / 2
+- 301 / 3/16" Short Arm Hex Key (tool, included) / 1
+- 302 / 7/32" Short Arm Hex Key (tool, included) / 1
+Also present but not customer-relevant: black square tube caps (qty 4) and 5/16 rivet nuts (qty 8, factory pre-installed, never something a customer handles).
+
+
 Swing-arm/Z-bar hardware is stainless steel bolts with NYLON LOCK NUTS. These can GALL/SEIZE if tightened too fast or with a power tool (heat buildup). Always tighten by hand, slowly. If seized, it usually can't be freed and has to be cut off. This is a real, previously undocumented failure mode — surface it any time someone describes a stuck/seized nut on swing-arm hardware.
 Final tightening sequence on GUNNY/Sergeant: small hardware first (light snug), then larger bolts in order — outside, then inside, then top — confirming flush/plumb fit as you go.
 
