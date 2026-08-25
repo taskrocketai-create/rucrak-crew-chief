@@ -31,16 +31,58 @@ async function sendEscalationEmail({ channel, question, customerName, customerCo
     return;
   }
 
-  const subject = `Crew Chief needs your help — ${channel} conversation`;
-  const bodyLines = [
-    `Channel: ${channel}`,
+  const q = (question || "(not provided)").trim();
+  // Subject leads with a trimmed preview of the actual question -- real
+  // feedback: the old subject line ("Crew Chief needs your help — text
+  // conversation") gave no way to gauge urgency from an inbox list without
+  // opening every single one. This lets Jason triage at a glance.
+  const questionPreview = q.length > 70 ? q.slice(0, 67) + "..." : q;
+  const subject = `Crew Chief: ${questionPreview}`;
+
+  const timestamp = new Date().toLocaleString("en-US", { timeZone: "America/New_York", dateStyle: "medium", timeStyle: "short" });
+
+  // Contact info as real clickable links when it looks like an email or
+  // phone number, so following up is one tap instead of copy-pasting.
+  const contact = (customerContact || "").trim();
+  let contactHtml = "Not given";
+  let contactText = "not given";
+  if (contact) {
+    const looksLikeEmail = contact.includes("@");
+    const digitsOnly = contact.replace(/[^\d+]/g, "");
+    const looksLikePhone = digitsOnly.length >= 7;
+    if (looksLikeEmail) {
+      contactHtml = `<a href="mailto:${contact}">${contact}</a>`;
+    } else if (looksLikePhone) {
+      contactHtml = `<a href="tel:${digitsOnly}">${contact}</a>`;
+    } else {
+      contactHtml = contact;
+    }
+    contactText = contact;
+  }
+
+  const html = `
+    <div style="font-family:sans-serif;max-width:560px;">
+      <div style="background:#FF6A13;color:#fff;padding:12px 16px;font-weight:bold;font-size:15px;">
+        Crew Chief needs your help — ${channel} conversation
+      </div>
+      <div style="padding:16px;border:1px solid #eee;border-top:none;">
+        <div style="font-size:15px;line-height:1.5;margin-bottom:16px;">${q.replace(/</g, "&lt;")}</div>
+        <table style="font-size:14px;color:#333;border-collapse:collapse;">
+          <tr><td style="padding:4px 12px 4px 0;color:#888;">Customer</td><td>${customerName || "Not given"}</td></tr>
+          <tr><td style="padding:4px 12px 4px 0;color:#888;">Contact</td><td>${contactHtml}</td></tr>
+          <tr><td style="padding:4px 12px 4px 0;color:#888;">When</td><td>${timestamp} ET</td></tr>
+        </table>
+      </div>
+    </div>
+  `;
+
+  const text = [
+    `[${channel}] ${q}`,
     "",
-    `Question / situation Crew Chief couldn't resolve:`,
-    question || "(not provided)",
-    "",
-    `Customer name: ${customerName || "not given"}`,
-    `Customer contact: ${customerContact || "not given"}`
-  ];
+    `Customer: ${customerName || "not given"}`,
+    `Contact: ${contactText}`,
+    `When: ${timestamp} ET`
+  ].join("\n");
 
   try {
     const res = await fetch("https://api.resend.com/emails", {
@@ -53,7 +95,8 @@ async function sendEscalationEmail({ channel, question, customerName, customerCo
         from: `Crew Chief <${fromEmail}>`,
         to: [toEmail],
         subject,
-        text: bodyLines.join("\n")
+        text,
+        html
       })
     });
     if (!res.ok) {
