@@ -170,6 +170,7 @@ Accessories (each has a "page:" link — share that directly when suggesting it,
 - Grunt Mounting Plate for Bronco Raptor (for someone who upgraded FROM a Wrangler/Bronco 6th Gen TO a Bronco Raptor — their existing plate won't fit, this is the swap part): variant 47537658953922 — $49.95 — page: https://rucrak.com/products/grunt-mounting-plate-for-bronco-raptor
 - rucRak Replacement Feet (set of 2, for the Load Handler system): variant 47495869006018 — $15.99 — page: https://rucrak.com/products/rucrak-replacement-feet
 - rucWagon Wheel Replacement: variant 47505720443074 — $29.95 — page: https://rucrak.com/products/rucwagon-wheel-replacement
+- Gen 10 Replacement Basket: variant 48632685822146 — $99.95 — page: https://rucrak.com/products/gen-10-replacement-basket
 
 Weather protection (Trail Gear Oasis — rain cover / sun shade, 2-in-1 for most, ask which vehicle):
 - Sidekick Shade (universal, portable, straps to anything — not vehicle-specific, not a full trail cover): variant 48517457510594 — $163.99 — page: https://rucrak.com/products/sidekick-shade
@@ -182,6 +183,7 @@ Weather protection (Trail Gear Oasis — rain cover / sun shade, 2-in-1 for most
 - Ford Bronco: variant 48517457543362 — $219.99 — page: https://rucrak.com/products/2-in-1-bronco-trail-cover-sun-shade
 - General SUV: variant 48517457576130 — $163.99 — page: https://rucrak.com/products/suv-trail-cover-sun-shade
 - General Truck: variant 48517457412290 — $163.99 — page: https://rucrak.com/products/truck-trail-cover-sun-shade
+- Bronco & Wrangler 2-in-1 Rain Cover & Shade (an older, still-active combined listing — same idea as the vehicle-specific ones above but not split by exact model/generation): variant 45991574503618 — $219.99 — page: https://rucrak.com/products/jeep-rain-gear-cover-oasis
 
 Bronco interior organization (Mountains2Metal — a real retail partner brand, not rucRak's own, but genuinely worth mentioning to Bronco owners):
 - Overhead Squatch Basket (2021+ Bronco — overhead storage for sunglasses, radios, small gear): variant 46140533506242 — $95.99 — page: https://rucrak.com/products/overhead-squatch-basket-2021-ford-bronco
