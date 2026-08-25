@@ -605,11 +605,18 @@
     flex:1;
     flex-direction:column;
     align-items:center;
-    justify-content:center;
+    /* Was justify-content:center -- real bug: combined with overflow-y:auto,
+       centering content that overflows its container clips the START of
+       that content (the heading) rather than making it reachable by
+       scrolling, since default scroll position lands at the container's
+       scroll-top, not the content's own top. flex-start guarantees the
+       heading is always visible from the top down, even when the header
+       above it is taller than expected and leaves less room than usual. */
+    justify-content:flex-start;
     gap:14px;
     padding:20px;
     text-align:center;
-    overflow-y:auto; /* safety net — shouldn't be needed if the content above fits, but never invisible/cut off if it doesn't */
+    overflow-y:auto;
     min-height:0;
   }
   .mode-select-heading{
@@ -685,7 +692,11 @@
     flex:1;
     flex-direction:column;
     align-items:center;
-    justify-content:center;
+    /* Same defensive fix as .mode-select-view above -- centered flex
+       content with no guaranteed-visible fallback risks the same kind of
+       top-content clipping if this view's content ever ends up taller
+       than expected (e.g. a longer status message). */
+    justify-content:flex-start;
     gap:14px;
     padding:24px;
     text-align:center;
