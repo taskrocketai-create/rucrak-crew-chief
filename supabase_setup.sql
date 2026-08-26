@@ -103,3 +103,26 @@ alter table rucrak_promo_optins enable row level security;
 -- to whatever you actually send to these contacts later (this table only
 -- captures the opt-in itself, not anything about sending).
 
+-- ---------------------------------------------------------------------------
+-- Table 5: price-drift "pending misses" -- tracks variants that came back
+-- missing from a single daily catalog check, without alerting yet.
+--
+-- Real false alarm this caught: a brand-new product came back as "missing"
+-- on its very first daily check, purely because of a brief propagation
+-- delay right after being created/published -- confirmed directly, the
+-- product was genuinely fine. Alerting on a single miss risks exactly this
+-- kind of false alarm, which erodes trust in the whole alert system over
+-- time. This table lets api/check-price-drift.js require a variant to be
+-- missing on two CONSECUTIVE daily runs before it actually emails anyone --
+-- a real, repeated absence, not a one-off blip.
+
+create table if not exists rucrak_price_drift_pending_misses (
+  variant_id text primary key,
+  first_missing_at timestamptz not null default now()
+);
+
+alter table rucrak_price_drift_pending_misses enable row level security;
+-- Same RLS approach as the other tables -- service role key only, used
+-- exclusively by api/check-price-drift.js.
+
+

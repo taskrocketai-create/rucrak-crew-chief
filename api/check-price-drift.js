@@ -26,11 +26,76 @@
 // Required environment variables (all already set for other features):
 //   SHOPIFY_STOREFRONT_API_TOKEN, SHOPIFY_STORE_DOMAIN (see api/_cart.js)
 //   RESEND_API_KEY, JASON_NOTIFY_EMAIL, CREWCHIEF_FROM_EMAIL (see api/_notify.js)
+//   SUPABASE_URL, SUPABASE_SERVICE_KEY (see api/_notify.js) -- used to track
+//   "missing" variants across runs so a single-run blip doesn't alert (see
+//   getPendingMisses/recordPendingMiss/clearPendingMiss below). Table:
+//   rucrak_price_drift_pending_misses, see supabase_setup.sql. If these
+//   aren't configured, missing-variant tracking is skipped gracefully and
+//   every miss alerts immediately (same as before this improvement) --
+//   price MISMATCHES always alert immediately regardless, since a real
+//   price change is actionable right away and doesn't have the same
+//   false-positive risk a "not found yet" blip does.
 
 const fs = require('fs');
 const path = require('path');
 
 const SHOPIFY_API_VERSION = "2025-10";
+const SUPABASE_TABLE = "rucrak_price_drift_pending_misses";
+
+function supabaseConfigured() {
+  return !!(process.env.SUPABASE_URL && process.env.SUPABASE_SERVICE_KEY);
+}
+
+async function getPendingMisses() {
+  if (!supabaseConfigured()) return new Set();
+  try {
+    const res = await fetch(`${process.env.SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}?select=variant_id`, {
+      headers: {
+        apikey: process.env.SUPABASE_SERVICE_KEY,
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_KEY}`
+      }
+    });
+    if (!res.ok) throw new Error(`Supabase read failed: ${res.status}`);
+    const rows = await res.json();
+    return new Set(rows.map((r) => r.variant_id));
+  } catch (err) {
+    console.error("getPendingMisses failed (non-fatal, treating as no prior misses):", err.message);
+    return new Set();
+  }
+}
+
+async function recordPendingMiss(variantId) {
+  if (!supabaseConfigured()) return;
+  try {
+    await fetch(`${process.env.SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}`, {
+      method: "POST",
+      headers: {
+        apikey: process.env.SUPABASE_SERVICE_KEY,
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_KEY}`,
+        "Content-Type": "application/json",
+        Prefer: "resolution=ignore-duplicates" // already-pending variant, no-op rather than error
+      },
+      body: JSON.stringify({ variant_id: variantId })
+    });
+  } catch (err) {
+    console.error("recordPendingMiss failed (non-fatal):", err.message);
+  }
+}
+
+async function clearPendingMiss(variantId) {
+  if (!supabaseConfigured()) return;
+  try {
+    await fetch(`${process.env.SUPABASE_URL}/rest/v1/${SUPABASE_TABLE}?variant_id=eq.${encodeURIComponent(variantId)}`, {
+      method: "DELETE",
+      headers: {
+        apikey: process.env.SUPABASE_SERVICE_KEY,
+        Authorization: `Bearer ${process.env.SUPABASE_SERVICE_KEY}`
+      }
+    });
+  } catch (err) {
+    console.error("clearPendingMiss failed (non-fatal):", err.message);
+  }
+}
 
 function extractPricesFromPrompt() {
   const promptPath = path.join(__dirname, '_prompt.js');
@@ -158,28 +223,58 @@ module.exports = async (req, res) => {
     }
 
     const livePrices = await fetchLivePrices(variantIds);
+    const priorPendingMisses = await getPendingMisses();
 
     const discrepancies = [];
-    const missingVariants = [];
+    const missingThisRun = [];
 
     for (const [variantId, promptPrice] of promptPrices.entries()) {
       const live = livePrices.get(variantId);
       if (live === null || live === undefined) {
-        missingVariants.push(variantId);
+        missingThisRun.push(variantId);
       } else if (Math.abs(live.price - promptPrice) > 0.001) {
+        // Price mismatches always alert immediately -- a real price change
+        // is actionable right away, and doesn't carry the same
+        // false-positive risk a "not found yet" blip does.
         discrepancies.push({ variantId, promptPrice, livePrice: live.price, title: live.title });
       }
     }
 
-    if (discrepancies.length > 0 || missingVariants.length > 0) {
-      await sendDriftEmail(discrepancies, missingVariants);
+    // Two-consecutive-misses rule: only alert on a variant that was ALSO
+    // missing on the prior run, not the first time it comes up missing.
+    // Real false alarm this fixes: a brand-new product came back "missing"
+    // on its very first check purely from a brief propagation delay right
+    // after being published -- confirmed directly, it was genuinely fine.
+    const confirmedMissing = [];
+    for (const variantId of missingThisRun) {
+      if (priorPendingMisses.has(variantId)) {
+        confirmedMissing.push(variantId);
+        // Stays recorded -- will keep alerting each run until it either
+        // resolves (cleared below) or someone acts on it.
+      } else {
+        await recordPendingMiss(variantId);
+      }
+    }
+    // Anything previously pending but NOT missing this run has resolved --
+    // clear it so a future blip starts its own fresh two-run count rather
+    // than being treated as a continuation of an old, already-resolved one.
+    const missingThisRunSet = new Set(missingThisRun);
+    for (const variantId of priorPendingMisses) {
+      if (!missingThisRunSet.has(variantId)) {
+        await clearPendingMiss(variantId);
+      }
+    }
+
+    if (discrepancies.length > 0 || confirmedMissing.length > 0) {
+      await sendDriftEmail(discrepancies, confirmedMissing);
     }
 
     return res.status(200).json({
       checked: variantIds.length,
       discrepancies: discrepancies.length,
-      missingVariants: missingVariants.length,
-      emailed: discrepancies.length > 0 || missingVariants.length > 0
+      missingThisRun: missingThisRun.length,
+      confirmedMissing: confirmedMissing.length,
+      emailed: discrepancies.length > 0 || confirmedMissing.length > 0
     });
   } catch (err) {
     console.error("check-price-drift failed:", err.message);
