@@ -153,7 +153,7 @@ async function handleOneCall(toolCall) {
       : "";
     return {
       toolCallId,
-      result: safeSingleLine(`Successfully added "${labelList}" to the cart.${discountNote}${accessoryNote} Internal reference only, do not read this out loud or say any part of it -- checkout link for the automatic Continue Shopping button: ${checkoutUrl}. Confirm this naturally to the customer now with something like "that's all set, ready when you are" -- you don't need to wait for anything further, this already happened.`)
+      result: safeSingleLine(`Successfully added "${labelList}" to the cart.${discountNote}${accessoryNote} The checkout link below is for internal reference only -- never read it out loud or say any part of it. Instead, confirm the add naturally AND explicitly mention the Continue Shopping button by name -- something like "that's all set -- if you want to check it out or add anything else, there's a Continue Shopping button right at the top of this chat window." That button, not the raw link, is how they'll actually see and adjust the cart in voice mode. Checkout link (internal only): ${checkoutUrl}. You don't need to wait for anything further, this already happened.`)
     };
   } catch (err) {
     console.error("add-to-cart-ack error for one call (non-fatal to the call):", err.message);
