@@ -179,4 +179,29 @@ async function addLineToCartWithFallback(cartId, items) {
   return { cartId: newCart.cartId, checkoutUrl: result.checkoutUrl, discountApplied: result.discountApplied, includesQualifyingProduct: result.includesQualifyingProduct, createdNewCart: true };
 }
 
-module.exports = { createCart, addLineToCart, addLineToCartWithFallback };
+// Looks up an existing cart's current checkout URL by ID, without adding
+// anything. Returns null if the cart doesn't exist (expired/invalid ID).
+//
+// Real bug this fixes: the "Continue Shopping" button previously just
+// linked to the site's homepage, relying on a browser cookie to make that
+// page show the right cart -- but that exact cookie-sync approach was
+// directly tested earlier in this project and confirmed NOT to work on
+// this store (Shopify's classic cookie-based cart and the Storefront API
+// cart used here aren't reliably interoperable). Voice-mode adds also
+// never taught the browser the resulting checkoutUrl at all, since that
+// whole exchange happens server-side. This gives the button a real,
+// direct way to find the cart's actual current checkout link on click,
+// instead of hoping a cookie makes a generic page show the right thing.
+async function getCartCheckoutUrl(cartId) {
+  if (!cartId) return null;
+  const query = `
+    query GetCart($cartId: ID!) {
+      cart(id: $cartId) { id checkoutUrl }
+    }
+  `;
+  const data = await shopifyStorefrontGraphQL(query, { cartId });
+  if (!data.cart) return null;
+  return data.cart.checkoutUrl;
+}
+
+module.exports = { createCart, addLineToCart, addLineToCartWithFallback, getCartCheckoutUrl };

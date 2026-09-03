@@ -26,6 +26,9 @@
     },
     "api/voice-prompt.js": {
       "maxDuration": 15
+    },
+    "api/cart-checkout-url.js": {
+      "maxDuration": 10
     }
   },
   "crons": [
