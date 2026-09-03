@@ -144,16 +144,19 @@ async function handleOneCall(toolCall) {
           ? " A $50 discount has also been applied automatically -- it's already baked into the checkout link, so don't read out or mention any code, just tell them the discount is applied."
           : " The discount specifically didn't apply this time (the item(s) themselves were still added fine) -- be honest that the discount part didn't go through if they ask, don't claim it's there.")
       : "";
-    // Spelling out the accessory follow-up directly in the result text,
-    // not just relying on the prompt's general instruction to remember it
-    // -- real feedback showed that general instruction alone wasn't
-    // reliably followed even after several rounds of strengthening it.
+    // Real feedback: when the accessory question got mentioned BEFORE the
+    // Continue Shopping direction in this result text, Daryl consistently
+    // asked it first too, before ever telling the customer how to actually
+    // reach their cart -- the instruction order here directly drives the
+    // spoken order. Continue Shopping now comes first, unconditionally,
+    // immediately after confirming the add; the accessory question (when
+    // relevant) comes explicitly AFTER that, not before.
     const accessoryNote = includesQualifyingProduct
-      ? " This includes a main product (GRUNT/GUNNY), so your very next sentence after confirming this must ask what they'll mainly be using it for (cargo, bikes, gear) to recommend one accessory -- do this now, in this same turn, don't skip it."
+      ? " AFTER that, and only after, ask what they'll mainly be using it for (cargo, bikes, gear) to recommend one accessory -- this includes a main product (GRUNT/GUNNY) so don't skip this question, just don't let it come before the Continue Shopping direction above."
       : "";
     return {
       toolCallId,
-      result: safeSingleLine(`Successfully added "${labelList}" to the cart.${discountNote}${accessoryNote} The checkout link below is for internal reference only -- never read it out loud or say any part of it. Instead, confirm the add naturally AND direct them to the Continue Shopping button using almost exactly this phrasing: "to access that cart, click the Continue Shopping button right above my head here." That button, not the raw link, is how they'll actually see and adjust the cart in voice mode. Checkout link (internal only): ${checkoutUrl}. You don't need to wait for anything further, this already happened.`)
+      result: safeSingleLine(`Successfully added "${labelList}" to the cart.${discountNote} The checkout link below is for internal reference only -- never read it out loud or say any part of it. Your very next sentence, immediately, before anything else: confirm the add naturally AND direct them to the Continue Shopping button using almost exactly this phrasing: "to access that cart, click the Continue Shopping button right above my head here." That button, not the raw link, is how they'll actually see and adjust the cart in voice mode.${accessoryNote} Checkout link (internal only): ${checkoutUrl}. You don't need to wait for anything further, this already happened.`)
     };
   } catch (err) {
     console.error("add-to-cart-ack error for one call (non-fatal to the call):", err.message);
