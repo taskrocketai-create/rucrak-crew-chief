@@ -153,7 +153,7 @@ async function handleOneCall(toolCall) {
       : "";
     return {
       toolCallId,
-      result: safeSingleLine(`Successfully added "${labelList}" to the cart.${discountNote} Checkout link: ${checkoutUrl}.${accessoryNote} Confirm this naturally to the customer now -- you don't need to wait for anything further, this already happened.`)
+      result: safeSingleLine(`Successfully added "${labelList}" to the cart.${discountNote}${accessoryNote} Internal reference only, do not read this out loud or say any part of it -- checkout link for the automatic Continue Shopping button: ${checkoutUrl}. Confirm this naturally to the customer now with something like "that's all set, ready when you are" -- you don't need to wait for anything further, this already happened.`)
     };
   } catch (err) {
     console.error("add-to-cart-ack error for one call (non-fatal to the call):", err.message);
