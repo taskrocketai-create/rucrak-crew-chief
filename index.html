@@ -1850,7 +1850,18 @@ function startVoiceMode(){
           if(promptRes.ok){
             const { systemPrompt } = await promptRes.json();
             if(systemPrompt){
-              overrides.model = { messages: [{ role: 'system', content: systemPrompt }] };
+              // Real bug this fixes: Vapi rejects the whole call with a 400
+              // if `model` is overridden at all without ALSO including
+              // provider and model -- confirmed directly from the actual
+              // error message in production. These must match what's
+              // configured for this assistant in the Vapi dashboard
+              // (Model tab: Anthropic / Claude Haiku 4.5) -- if that ever
+              // changes in the dashboard, this needs to change to match.
+              overrides.model = {
+                provider: 'anthropic',
+                model: 'claude-haiku-4-5-20251001',
+                messages: [{ role: 'system', content: systemPrompt }]
+              };
             }
           }
         } catch(err) {
