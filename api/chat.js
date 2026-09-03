@@ -21,6 +21,7 @@
 //                            for supporting several specific origins at once.
 
 const SYSTEM_PROMPT = require('./_prompt.js');
+const { applyLivePricing } = require('./_live_pricing.js');
 const { handleEscalation, logMarketingInfo, logPromoOptin } = require('./_notify.js');
 
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "*")
@@ -324,6 +325,14 @@ module.exports = async (req, res) => {
   const trimmedMessages = messages.slice(-40);
 
   try {
+    // Real prices, fetched fresh (or from a short cache) every request --
+    // see api/_live_pricing.js for why: baked-in prices in SYSTEM_PROMPT
+    // go stale between manual syncs, this eliminates that entirely rather
+    // than just alerting on it. Falls back to SYSTEM_PROMPT's own baked-in
+    // prices unchanged if this fails for any reason -- a pricing hiccup
+    // should never be why a conversation breaks.
+    const livePricedSystemPrompt = await applyLivePricing(SYSTEM_PROMPT);
+
     const anthropicResponse = await fetch("https://api.anthropic.com/v1/messages", {
       method: "POST",
       headers: {
@@ -334,7 +343,7 @@ module.exports = async (req, res) => {
       body: JSON.stringify({
         model: "claude-sonnet-4-6",
         max_tokens: 1000,
-        system: SYSTEM_PROMPT,
+        system: livePricedSystemPrompt,
         messages: trimmedMessages
       })
     });

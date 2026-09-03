@@ -23,6 +23,9 @@
     },
     "api/check-price-drift.js": {
       "maxDuration": 30
+    },
+    "api/voice-prompt.js": {
+      "maxDuration": 15
     }
   },
   "crons": [

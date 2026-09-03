@@ -972,6 +972,7 @@
 const CHAT_ENDPOINT = '/api/chat'; // change to your deployed API URL if hosted separately
 const CART_ADD_ENDPOINT = '/api/cart-add'; // change alongside CHAT_ENDPOINT if hosted separately
 const CART_CREATE_ENDPOINT = '/api/cart-create'; // change alongside CHAT_ENDPOINT if hosted separately
+const VOICE_PROMPT_ENDPOINT = '/api/voice-prompt'; // change alongside CHAT_ENDPOINT if hosted separately
 
 let messages = [];
 let pendingImages = []; // array of { base64, mediaType, previewSrc } — cleared after send
@@ -1826,16 +1827,36 @@ function startVoiceMode(){
 
   vapiReadyPromise
     .then(async (vapi)=>{
-      // Assistant (model, voice, and the full system prompt) is managed entirely in the
-      // Vapi dashboard now — one single source of truth, no duplicated prompt to drift
-      // out of sync with. Edit the assistant there, not here.
+      // Real change: the assistant's system prompt is now built fresh
+      // server-side on every call (see api/voice-prompt.js), with live
+      // Shopify pricing baked in, instead of being frozen at whatever
+      // static text was last manually pasted into the Vapi dashboard.
+      // Confirmed directly against Vapi's own API schema before building
+      // this: assistantOverrides.model and .voice are separate fields --
+      // overriding model.messages here does NOT touch the assistant's
+      // configured voice/tone, which stays exactly as set in the
+      // dashboard. If this fetch fails for any reason, falls back to
+      // starting the call with no prompt override at all, which uses
+      // whatever's saved in the dashboard -- a real working fallback, not
+      // a broken call, just without the live-pricing benefit for that one
+      // call.
       // vapiSDK.run() above only sets up the instance — it doesn't start a call on its own,
       // so we always explicitly start one here in response to the tap.
       if(!voiceCallActive){
         const cartIdForCall = await ensureCartId();
-        const startResult = vapi.start(CREW_CHIEF_ASSISTANT_ID, {
-          variableValues: { priorContext: contextForCall, cartId: cartIdForCall }
-        });
+        const overrides = { variableValues: { priorContext: contextForCall, cartId: cartIdForCall } };
+        try {
+          const promptRes = await fetch(VOICE_PROMPT_ENDPOINT);
+          if(promptRes.ok){
+            const { systemPrompt } = await promptRes.json();
+            if(systemPrompt){
+              overrides.model = { messages: [{ role: 'system', content: systemPrompt }] };
+            }
+          }
+        } catch(err) {
+          console.error('Could not fetch live voice prompt, falling back to the dashboard-saved prompt for this call (non-fatal):', err);
+        }
+        const startResult = vapi.start(CREW_CHIEF_ASSISTANT_ID, overrides);
         if(startResult && typeof startResult.catch === 'function'){
           startResult.catch((err)=>{
             console.error('Vapi start() rejected:', err);

@@ -125,4 +125,26 @@ alter table rucrak_price_drift_pending_misses enable row level security;
 -- Same RLS approach as the other tables -- service role key only, used
 -- exclusively by api/check-price-drift.js.
 
+-- ---------------------------------------------------------------------------
+-- Table 6: live price cache -- short-lived cache of real Shopify prices,
+-- used by api/_live_pricing.js so Daryl's prices are genuinely live
+-- instead of frozen prompt text, without hitting Shopify's API on every
+-- single chat message. See api/_live_pricing.js for the full explanation
+-- -- this table just holds the most recent fetch, refreshed every few
+-- minutes rather than on every request.
+
+create table if not exists rucrak_live_price_cache (
+  id bigint generated always as identity primary key,
+  prices jsonb not null,
+  fetched_at timestamptz not null default now()
+);
+
+alter table rucrak_live_price_cache enable row level security;
+-- Same RLS approach as the other tables -- service role key only, used
+-- exclusively by api/_live_pricing.js. Old rows accumulate here over time
+-- (a new one gets inserted every time the cache refreshes, roughly every 5
+-- minutes during active use) -- worth periodically clearing out old rows
+-- if this table grows large, though nothing breaks if you don't, since
+-- only the single most recent row is ever read.
+
 
