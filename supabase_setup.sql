@@ -1,9 +1,6 @@
 -- Run this once in Supabase's SQL Editor (in your existing TaskRocket
 -- Supabase project — no need for a separate project) to create the table
 -- Crew Chief logs to.
---
--- This is intentionally minimal: it's a record of "a question got handled,"
--- not a full conversation transcript store. See README.md for why.
 
 create table if not exists rucrak_chief_calls (
   id uuid primary key default gen_random_uuid(),
@@ -11,8 +8,28 @@ create table if not exists rucrak_chief_calls (
   first_message text,      -- the customer's opening question in this exchange
   last_message text,       -- their most recent message (may be same as first_message)
   message_count integer,   -- how many user messages were in this exchange
-  had_image boolean default false  -- whether a fitment photo was attached
+  had_image boolean default false,  -- whether a fitment photo was attached
+  transcript text          -- full conversation text, see note below
 );
+
+-- transcript: added when Jason asked for a copy of every conversation, not
+-- just the summary counts. Holds the WHOLE back-and-forth for the exchange
+-- (both sides, role-labeled), not just the first/last 500 chars above.
+--
+-- Retention on purpose: this column is meant to be short-lived. The weekly
+-- report job (api/weekly-report.js) attaches everything written that week
+-- as a downloadable file to Jason's email, and once that email sends
+-- successfully, it wipes the transcript column for every row it just
+-- reported on (sets it back to null — first_message/last_message/
+-- message_count/had_image are untouched, same as before). So at any given
+-- moment this table holds at most ~7 days of full transcripts: whatever's
+-- happened since the last report went out. If that job hasn't run yet, or
+-- SUPABASE_URL/SUPABASE_SERVICE_KEY aren't set, transcripts just accumulate
+-- normally — nothing else in the app reads or clears this column.
+--
+-- If you already have this table from before, run this once to add the
+-- column without losing existing rows:
+--   alter table rucrak_chief_calls add column if not exists transcript text;
 
 -- Optional: an index if you'll be querying by date range often (e.g. "calls this month")
 create index if not exists rucrak_chief_calls_created_at_idx on rucrak_chief_calls (created_at desc);

@@ -305,6 +305,8 @@ test("logs a handled call to Supabase when SUPABASE_URL/SUPABASE_SERVICE_KEY are
         assert.equal(loggedCall.first_message, "will this fit my Jeep?");
         assert.equal(loggedCall.message_count, 1);
         assert.equal(loggedCall.had_image, false);
+        assert.ok(loggedCall.transcript.includes("Customer: will this fit my Jeep?"), "transcript should include the customer's message");
+        assert.ok(loggedCall.transcript.includes("Daryl: reply"), "transcript should include Daryl's reply");
       } finally {
         global.fetch = original;
       }

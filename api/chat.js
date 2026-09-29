@@ -189,7 +189,31 @@ function extractPlainText(content) {
   return "";
 }
 
-async function logHandledCall({ userMessages, hadImage }) {
+// Renders the WHOLE exchange (both sides, in order) as plain text for the
+// weekly transcript file — not just the first/last-message snippet used for
+// the summary counts. An image block is noted, not embedded (photos aren't
+// re-attached to the weekly email — too heavy, and not what Jason asked for).
+function renderTranscript(messages) {
+  return messages
+    .map((m) => {
+      const who = m.role === "assistant" ? "Daryl" : "Customer";
+      const parts = [];
+      if (Array.isArray(m.content)) {
+        for (const block of m.content) {
+          if (block.type === "text" && block.text) parts.push(block.text);
+          else if (block.type === "image") parts.push("[photo attached]");
+        }
+      } else if (typeof m.content === "string") {
+        parts.push(m.content);
+      }
+      const text = parts.join(" ").trim();
+      return text ? `${who}: ${text}` : null;
+    })
+    .filter(Boolean)
+    .join("\n");
+}
+
+async function logHandledCall({ allMessages, userMessages, hadImage }) {
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
   if (!supabaseUrl || !supabaseKey) return; // logging not configured — skip quietly
@@ -210,7 +234,8 @@ async function logHandledCall({ userMessages, hadImage }) {
         first_message: extractPlainText(firstUserMessage && firstUserMessage.content).slice(0, 500),
         last_message: extractPlainText(lastUserMessage && lastUserMessage.content).slice(0, 500),
         message_count: userMessages.length,
-        had_image: hadImage
+        had_image: hadImage,
+        transcript: renderTranscript(allMessages)
       }])
     });
   } catch (err) {
@@ -412,7 +437,10 @@ module.exports = async (req, res) => {
     const hadImage = userMessages.some(
       (m) => Array.isArray(m.content) && m.content.some((b) => b.type === "image")
     );
-    logHandledCall({ userMessages, hadImage }).catch(() => {});
+    // Include Daryl's just-generated reply so the stored transcript covers
+    // the whole exchange, not just everything up to (not including) it.
+    const allMessages = [...trimmedMessages, { role: "assistant", content: replyText }];
+    logHandledCall({ allMessages, userMessages, hadImage }).catch(() => {});
 
     return res.status(200).json({ text: replyText, addToCart: addToCart || undefined });
   } catch (err) {

@@ -123,13 +123,33 @@ Keep the whole thing tight — a business owner skimming this on their phone sho
   }
 }
 
-async function sendReportEmail(reportText, unresolvedEscalations) {
+// Builds one plain-text file holding every logged exchange's full
+// transcript for the week, in order, each one clearly separated and
+// timestamped. This is what gets attached to the weekly email — Jason
+// gets the summary in the email body and the full conversations as a
+// download, rather than one giant wall of text inline.
+function buildTranscriptFile(calls) {
+  const withTranscript = calls.filter((c) => c.transcript && c.transcript.trim());
+  if (withTranscript.length === 0) {
+    return "No conversation transcripts were logged this week.\n";
+  }
+  return withTranscript
+    .slice()
+    .reverse() // oldest first, reads top-to-bottom like a log
+    .map((c, i) => {
+      const when = c.created_at ? new Date(c.created_at).toLocaleString("en-US") : "(no timestamp)";
+      return `--- Conversation ${i + 1} — ${when} ---\n${c.transcript}\n`;
+    })
+    .join("\n");
+}
+
+async function sendReportEmail(reportText, unresolvedEscalations, calls) {
   const apiKey = process.env.RESEND_API_KEY;
   const toEmail = process.env.JASON_NOTIFY_EMAIL;
   const fromEmail = process.env.CREWCHIEF_FROM_EMAIL || "crewchief@send.rucrak.com";
   if (!apiKey || !toEmail) {
     console.log("Weekly report email skipped — RESEND_API_KEY or JASON_NOTIFY_EMAIL not set.");
-    return;
+    return false;
   }
 
   const unresolvedSection = unresolvedEscalations.length
@@ -138,7 +158,11 @@ async function sendReportEmail(reportText, unresolvedEscalations) {
         .join("\n")
     : "";
 
-  const body = (reportText || "(Report generation failed this week — check Vercel logs for api/weekly-report.js.)") + unresolvedSection;
+  const transcriptNote = "\n\nFull transcripts for every conversation this week are attached as a text file.";
+  const body = (reportText || "(Report generation failed this week — check Vercel logs for api/weekly-report.js.)") + unresolvedSection + transcriptNote;
+
+  const dateLabel = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
+  const transcriptFile = buildTranscriptFile(calls);
 
   try {
     const res = await fetch("https://api.resend.com/emails", {
@@ -150,15 +174,54 @@ async function sendReportEmail(reportText, unresolvedEscalations) {
       body: JSON.stringify({
         from: `Crew Chief <${fromEmail}>`,
         to: [toEmail],
-        subject: `Crew Chief weekly report — ${new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}`,
-        text: body
+        subject: `Crew Chief weekly report — ${dateLabel}`,
+        text: body,
+        attachments: [{
+          filename: `crewchief-transcripts-${dateLabel.replace(/\s+/g, "-")}.txt`,
+          content: Buffer.from(transcriptFile, "utf-8").toString("base64")
+        }]
       })
     });
     if (!res.ok) {
       console.error("Weekly report send failed:", res.status, await res.text());
+      return false;
     }
+    return true;
   } catch (err) {
     console.error("Weekly report email failed:", err.message);
+    return false;
+  }
+}
+
+// Retention: once Jason has the transcripts in his inbox, we don't need to
+// keep holding the full text in Supabase — clear the transcript column for
+// every row that went into this week's report (leaves first_message/
+// last_message/message_count/had_image alone, same as before this feature).
+async function clearReportedTranscripts(calls) {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+  if (!supabaseUrl || !supabaseKey) return;
+
+  const ids = calls.filter((c) => c.transcript && c.transcript.trim()).map((c) => c.id);
+  if (ids.length === 0) return;
+
+  try {
+    const idList = ids.map((id) => `"${id}"`).join(",");
+    const res = await fetch(`${supabaseUrl}/rest/v1/rucrak_chief_calls?id=in.(${idList})`, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        apikey: supabaseKey,
+        Authorization: `Bearer ${supabaseKey}`,
+        Prefer: "return=minimal"
+      },
+      body: JSON.stringify({ transcript: null })
+    });
+    if (!res.ok) {
+      console.error("Failed to clear reported transcripts:", res.status, await res.text());
+    }
+  } catch (err) {
+    console.error("Failed to clear reported transcripts:", err.message);
   }
 }
 
@@ -185,9 +248,15 @@ module.exports = async (req, res) => {
     const unresolvedEscalations = escalations.filter((e) => !e.resolved);
 
     const reportText = await generateReportText({ calls, escalations, unresolvedEscalations, marketingNotes });
-    await sendReportEmail(reportText, unresolvedEscalations);
+    const sent = await sendReportEmail(reportText, unresolvedEscalations, calls);
 
-    return res.status(200).json({ ok: true, calls: calls.length, escalations: escalations.length });
+    // Only wipe transcripts once the email actually went out — if the send
+    // failed, keep them so next run (or a manual retry) can still report them.
+    if (sent) {
+      await clearReportedTranscripts(calls);
+    }
+
+    return res.status(200).json({ ok: true, calls: calls.length, escalations: escalations.length, transcriptsCleared: sent });
   } catch (err) {
     console.error("Weekly report generation failed:", err.message);
     return res.status(500).json({ error: err.message });

@@ -33,16 +33,26 @@ none of which I can act on for you.
 
 ## About the call log (optional)
 
-Crew Chief can keep a simple record of how many questions it's actually
-handling — not full transcripts, not a learning/training system (Claude
-doesn't support fine-tuning through the API, so there's no automatic
-"gets smarter from chats" feature to build). Just a count you can look at.
+Crew Chief keeps a record of how many questions it's actually handling,
+plus — as of the transcript feature added for Jason — the full text of
+every exchange, short-lived. This is still not a learning/training system
+(Claude doesn't support fine-tuning through the API, so there's no
+automatic "gets smarter from chats" feature here).
 
 **What gets logged, per exchange:** the customer's first and most recent
 message (truncated to 500 characters each), how many messages were in that
-exchange, and whether a photo was attached. Nothing else — no IP address,
-no name, no phone number, unless the customer happened to type one into
-the chat itself.
+exchange, whether a photo was attached, and the full transcript (both
+sides, role-labeled — photos are noted as "[photo attached]", not stored).
+No IP address, no name, no phone number, unless the customer happened to
+type one into the chat itself.
+
+**Retention on the full transcript:** it doesn't stick around. The weekly
+report job (`api/weekly-report.js`) attaches every transcript from the past
+7 days to Jason's weekly email as a downloadable `.txt` file, and once that
+email sends successfully, it wipes the `transcript` column on those rows
+back to null. The lightweight fields (first/last message, count, had_image)
+are untouched and persist as before — only the full transcript text is
+short-lived, cleared once Jason has his own copy.
 
 **Setup (optional — skip this section entirely if you don't want logging):**
 
