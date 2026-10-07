@@ -51,10 +51,8 @@ const QUALIFYING_PRODUCT_VARIANT_IDS = new Set([
   "45949391831234", // GRUNT -- Jeep Wrangler JL
   "45949397270722", // GRUNT -- Ford Bronco
   "45949398122690", // GRUNT -- Ford Bronco Raptor
-  "47653240340674", // GUNNY -- Driver / Straight
-  "47653240373442", // GUNNY -- Driver / 4" Riser
-  "47653240406210", // GUNNY -- Passenger / Straight
-  "47653240438978"  // GUNNY -- Passenger / 4" Riser
+  "47653240340674", // GUNNY -- Driver
+  "47653240406210"  // GUNNY -- Passenger
 ]);
 
 function includesQualifyingProduct(items) {

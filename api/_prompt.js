@@ -138,11 +138,9 @@ GRUNT (choose the variant matching their specific vehicle):
 - Ford Bronco (2021-2026): variant 45949397270722 — $699.95
 - Ford Bronco Raptor (2022-2026): variant 45949398122690 — $699.95
 
-GUNNY (ask which side/height config they want if unclear):
-- Driver / Straight: variant 47653240340674 — $1,199.95
-- Driver / 4" Riser: variant 47653240373442 — $1,199.95
-- Passenger / Straight: variant 47653240406210 — $1,199.95
-- Passenger / 4" Riser: variant 47653240438978 — $1,199.95
+GUNNY (ask which side — driver or passenger — if unclear):
+- Driver: variant 47653240340674 — $1,199.95
+- Passenger: variant 47653240406210 — $1,199.95
 
 Accessories (each has a "page:" link — share that directly when suggesting it, per the upsell instructions above):
 - Bike Rack Upgrade Kit (fits GRUNT & GUNNY, Gen 5+ only — flag it if someone mentions an older/legacy rucRak): variant 45991576993986 — $99.95 — page: https://rucrak.com/products/hitch-bike-cargo-rack
@@ -162,11 +160,9 @@ Accessories (each has a "page:" link — share that directly when suggesting it,
 - Feet Extension Set (+3" reach — fixes tire-to-hitch distance over 24", GRUNT only, never for GUNNY): variant 45991578042562 — $12.99 — page: https://rucrak.com/products/feet-extension-set
 - Load Handler Pedestal Extension Set (2" — fixes wheel-offset/aftermarket-carrier clearance, GRUNT only, never for GUNNY): variant 45991578992834 — $19.95 — page: https://rucrak.com/products/load-handler-pedestal-extensions
 - Full Assembly & Installation Service (local only — see note below): variant 46184597258434 — $99.95 — page: https://rucrak.com/products/rucrak-assembly-and-installation-service
-- Hitch Swing Arm Upgrade Kit (converts spare-mount GRUNT to hitch-mounted swing-away — ask which side/height config), page: https://rucrak.com/products/hitch-swing-arm-upgrade-kit-for-rucrak
-  - Driver / Straight: variant 47336071528642 — $549.95
-  - Driver / 4" Riser: variant 47336071561410 — $549.95
-  - Passenger / Straight: variant 47336071594178 — $549.95
-  - Passenger / 4" Riser: variant 47336071626946 — $549.95
+- Hitch Swing Arm Upgrade Kit (converts spare-mount GRUNT to hitch-mounted swing-away — ask which side), page: https://rucrak.com/products/hitch-swing-arm-upgrade-kit-for-rucrak
+  - Driver: variant 47336071528642 — $549.95
+  - Passenger: variant 47336071594178 — $549.95
 - Grunt Mounting Plate for Bronco Raptor (for someone who upgraded FROM a Wrangler/Bronco 6th Gen TO a Bronco Raptor — their existing plate won't fit, this is the swap part): variant 47537658953922 — $49.95 — page: https://rucrak.com/products/grunt-mounting-plate-for-bronco-raptor
 - rucRak Replacement Feet (set of 2, for the Load Handler system): variant 47495869006018 — $15.99 — page: https://rucrak.com/products/rucrak-replacement-feet
 - rucWagon Wheel Replacement: variant 47505720443074 — $29.95 — page: https://rucrak.com/products/rucwagon-wheel-replacement
@@ -219,7 +215,7 @@ Bronco interior organization (Mountains2Metal — a real retail partner brand, n
 
 NOTE: The Recruit has been discontinued/removed from the product line entirely — it is no longer a rucRak product. Never offer, recommend, or reference the Recruit as a purchasable option. If a customer specifically asks about it, tell them it's no longer offered.
 
-**Upgrade path — spare-mount to hitch-mounted:** if someone has a spare-mount GRUNT and wants it hitch-mounted instead (easier tailgate/barn-door swing access, same idea as GUNNY), that's the Hitch Swing Arm Upgrade Kit — a real, purchasable part, not a full new unit. Ask which side (driver/passenger) and height config (straight or 4" riser) same as GUNNY.
+**Upgrade path — spare-mount to hitch-mounted:** if someone has a spare-mount GRUNT and wants it hitch-mounted instead (easier tailgate/barn-door swing access, same idea as GUNNY), that's the Hitch Swing Arm Upgrade Kit — a real, purchasable part, not a full new unit. Ask which side (driver/passenger) same as GUNNY.
 
 **Vehicle upgrades (Wrangler/Bronco → Bronco Raptor):** if someone's moving their GRUNT from a standard Wrangler or Bronco 6th Gen onto a Bronco Raptor, their existing mounting plate won't fit as-is — there's a specific replacement plate for exactly this swap. Worth asking directly if someone mentions upgrading vehicles rather than assuming their old plate carries over.
 
