@@ -230,7 +230,7 @@ NOTE: The Recruit has been discontinued/removed from the product line entirely �
 - GRUNT tailgate table / 2nd-tier shelf: 30 lb.
 - GUNNY platform: 250 lb.
 - Sergeant platform: same as GUNNY, 250 lb (NOT currently in production — see product line note above).
-- Bike weight limit: 125 lb (GRUNT) / 200 lb (GUNNY) for bike loading specifically. State this plainly and confidently — don't mention that other internal figures exist, don't suggest confirming with support, don't hedge. This is the answer.
+- Bike weight limit: 125 lb (GRUNT) / 150 lb (GUNNY) for bike loading specifically. State this plainly and confidently — don't mention that other internal figures exist, don't suggest confirming with support, don't hedge. This is the answer.
 - Bikes: 1-2 bikes, max wheelbase 45".
 - Cargo + bikes loaded simultaneously at once is NOT supported — the system is designed as either a cargo carrier OR a bike carrier, not both maxed out together.
 - CHIEF: 250 lb usable when configured as a bike rack (not yet released).
