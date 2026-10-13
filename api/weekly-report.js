@@ -151,6 +151,13 @@ async function sendReportEmail(reportText, unresolvedEscalations, calls) {
     console.log("Weekly report email skipped — RESEND_API_KEY or JASON_NOTIFY_EMAIL not set.");
     return false;
   }
+  // Extra standing recipients (comma-separated), in addition to JASON_NOTIFY_EMAIL.
+  // Defaults to Alan so TaskRocket keeps its own copy of the weekly transcripts.
+  const extraRecipients = (process.env.CREWCHIEF_CC_EMAILS || "ahoward@taskrocket.org")
+    .split(",")
+    .map((e) => e.trim())
+    .filter(Boolean);
+  const recipients = [toEmail, ...extraRecipients.filter((e) => e !== toEmail)];
 
   const unresolvedSection = unresolvedEscalations.length
     ? "\n\nStill unresolved from this week:\n" + unresolvedEscalations
@@ -173,7 +180,7 @@ async function sendReportEmail(reportText, unresolvedEscalations, calls) {
       },
       body: JSON.stringify({
         from: `Crew Chief <${fromEmail}>`,
-        to: [toEmail],
+        to: recipients,
         subject: `Crew Chief weekly report — ${dateLabel}`,
         text: body,
         attachments: [{
