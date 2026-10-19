@@ -9,7 +9,8 @@ create table if not exists rucrak_chief_calls (
   last_message text,       -- their most recent message (may be same as first_message)
   message_count integer,   -- how many user messages were in this exchange
   had_image boolean default false,  -- whether a fitment photo was attached
-  transcript text          -- full conversation text, see note below
+  transcript text,         -- full conversation text, see note below
+  channel text not null default 'text'  -- 'text' or 'voice', see note below
 );
 
 -- transcript: added when Jason asked for a copy of every conversation, not
@@ -30,6 +31,19 @@ create table if not exists rucrak_chief_calls (
 -- If you already have this table from before, run this once to add the
 -- column without losing existing rows:
 --   alter table rucrak_chief_calls add column if not exists transcript text;
+--
+-- channel: added when it turned out this table had ONLY ever been logging
+-- text-mode chats (api/chat.js) -- voice mode had its own escalation
+-- logger (api/log-escalation.js) but nothing logged ordinary voice
+-- conversations, so as customers shifted to voice this table looked like
+-- it had gone quiet. api/log-voice-call.js now logs voice conversations
+-- here too, tagged channel = 'voice' (client-side, fired from index.html
+-- on Vapi's call-end event, using the transcript already captured live
+-- during the call). Existing rows and anything from api/chat.js are
+-- channel = 'text'.
+-- If you already have this table from before, run this once to add the
+-- column without losing existing rows:
+--   alter table rucrak_chief_calls add column if not exists channel text not null default 'text';
 
 -- Optional: an index if you'll be querying by date range often (e.g. "calls this month")
 create index if not exists rucrak_chief_calls_created_at_idx on rucrak_chief_calls (created_at desc);

@@ -231,6 +231,7 @@ async function logHandledCall({ allMessages, userMessages, hadImage }) {
         Prefer: "return=minimal"
       },
       body: JSON.stringify([{
+        channel: "text",
         first_message: extractPlainText(firstUserMessage && firstUserMessage.content).slice(0, 500),
         last_message: extractPlainText(lastUserMessage && lastUserMessage.content).slice(0, 500),
         message_count: userMessages.length,

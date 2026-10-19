@@ -34,6 +34,7 @@ const CART_ADD_ENDPOINT = 'https://rucrak-crew-chief.vercel.app/api/cart-add'; /
 const CART_CREATE_ENDPOINT = 'https://rucrak-crew-chief.vercel.app/api/cart-create'; // change alongside CHAT_ENDPOINT if hosted separately
 const VOICE_PROMPT_ENDPOINT = 'https://rucrak-crew-chief.vercel.app/api/voice-prompt'; // change alongside CHAT_ENDPOINT if hosted separately
 const CART_CHECKOUT_URL_ENDPOINT = 'https://rucrak-crew-chief.vercel.app/api/cart-checkout-url'; // change alongside CHAT_ENDPOINT if hosted separately
+const LOG_VOICE_CALL_ENDPOINT = 'https://rucrak-crew-chief.vercel.app/api/log-voice-call'; // change alongside CHAT_ENDPOINT if hosted separately
 
 let messages = [];
 let pendingImages = []; // array of { base64, mediaType, previewSrc } — cleared after send
@@ -750,6 +751,27 @@ function buildTextHistorySummary(){
 // mode's history — the reverse direction of the text-to-voice handoff below.
 let voiceTranscriptBuffer = [];
 
+// Logs every voice conversation to the same table text mode logs to (see
+// api/log-voice-call.js) -- this was the gap that made it look like call
+// logging had "stopped": voice mode was never wired into it, only text
+// mode was. Fire-and-forget, never blocks or affects the call UI, and a
+// zero-turn buffer (call connected and ended with no speech) is silently
+// skipped by the endpoint itself.
+function logVoiceCall(transcriptBuffer){
+  if(!transcriptBuffer || transcriptBuffer.length === 0) return;
+  try {
+    fetch(LOG_VOICE_CALL_ENDPOINT, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({ transcript: transcriptBuffer })
+    }).catch((err)=>{
+      console.error('Voice call logging failed (non-fatal):', err);
+    });
+  } catch(err) {
+    console.error('Voice call logging failed (non-fatal):', err);
+  }
+}
+
 function flushVoiceTranscriptToText(){
   if(voiceTranscriptBuffer.length === 0) return;
   for(const turn of voiceTranscriptBuffer){
@@ -823,6 +845,7 @@ function attachVapiListeners(vapi){
 
   vapi.on('call-end', ()=>{
     voiceCallActive = false;
+    logVoiceCall(voiceTranscriptBuffer); // fire-and-forget, before the flush below clears the buffer
     flushVoiceTranscriptToText(); // hand the voice conversation over to text mode's history
     // Back to the idle "tap to start" screen, not text — they can still choose to switch manually.
     resetVoiceIdleUI();
