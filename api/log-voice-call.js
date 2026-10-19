@@ -48,11 +48,33 @@ async function voiceEscalationAlreadyLogged() {
   }
 }
 
+// Contacts Daryl logged as promo-list opt-ins during this call (last 20 min).
+// Those are saved in rucrak_promo_optins and listed in the weekly report, so
+// they must not also email Jason as leads.
+async function recentVoicePromoContacts() {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+  if (!supabaseUrl || !supabaseKey) return [];
+  try {
+    const since = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    const r = await fetch(
+      `${supabaseUrl}/rest/v1/rucrak_promo_optins?channel=eq.voice&created_at=gte.${encodeURIComponent(since)}&select=contact_method&limit=20`,
+      { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
+    );
+    if (!r.ok) return [];
+    const rows = await r.json();
+    return Array.isArray(rows) ? rows.map((x) => x.contact_method).filter(Boolean) : [];
+  } catch (err) {
+    return [];
+  }
+}
+
 // Backstop: a phone number or email spoken during the call is a lead, whether
 // or not Daryl remembered to call flag_escalation.
 async function backstopVoiceLead(userTurns) {
   try {
-    const lead = detectLeadInTranscript(userTurns.map((t) => extractPlainText(t.text)));
+    const promoContacts = await recentVoicePromoContacts();
+    const lead = detectLeadInTranscript(userTurns.map((t) => extractPlainText(t.text)), promoContacts);
     if (!lead) return;
     if (await voiceEscalationAlreadyLogged()) return;
     await handleEscalation({ channel: "voice", ...lead });

@@ -195,19 +195,32 @@ function contactKey(c) {
 
 // userTexts: customer messages in order, newest last. Returns an escalation
 // payload if the newest message contains a contact not seen earlier, else null.
-function detectNewLead(userTexts) {
+//
+// excludeContacts: contacts to ignore -- e.g. one the customer just gave as a
+// promo-list opt-in. Those go in the opt-in table and the weekly report, not
+// Jason's inbox one at a time.
+function excludeKeys(excludeContacts) {
+  return new Set((excludeContacts || []).filter(Boolean).flatMap((c) => {
+    const found = findContacts(c);
+    return (found.length ? found : [String(c)]).map(contactKey);
+  }));
+}
+
+function detectNewLead(userTexts, excludeContacts) {
   if (!Array.isArray(userTexts) || userTexts.length === 0) return null;
   const latest = userTexts[userTexts.length - 1];
   const seen = new Set(userTexts.slice(0, -1).flatMap(findContacts).map(contactKey));
-  const fresh = findContacts(latest).filter((c) => !seen.has(contactKey(c)));
+  const skip = excludeKeys(excludeContacts);
+  const fresh = findContacts(latest).filter((c) => !seen.has(contactKey(c)) && !skip.has(contactKey(c)));
   if (fresh.length === 0) return null;
   return buildLeadEscalation(userTexts.slice(-6), fresh);
 }
 
 // Voice: the whole transcript arrives at once at call end, so any contact
 // anywhere in the customer's turns counts.
-function detectLeadInTranscript(userTexts) {
-  const all = [...new Set((userTexts || []).flatMap(findContacts).map((c) => c))];
+function detectLeadInTranscript(userTexts, excludeContacts) {
+  const skip = excludeKeys(excludeContacts);
+  const all = [...new Set((userTexts || []).flatMap(findContacts))].filter((c) => !skip.has(contactKey(c)));
   if (all.length === 0) return null;
   return buildLeadEscalation(userTexts.slice(-8), all);
 }
@@ -290,5 +303,5 @@ async function logPromoOptin({ channel, contactMethod, contactType, customerName
 
 module.exports = {
   sendEscalationEmail, logEscalation, handleEscalation, logMarketingInfo, logPromoOptin,
-  findContacts, normalizeSpokenDigits, detectNewLead, detectLeadInTranscript
+  findContacts, normalizeSpokenDigits, contactKey, detectNewLead, detectLeadInTranscript
 };

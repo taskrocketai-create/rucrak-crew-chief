@@ -409,16 +409,6 @@ module.exports = async (req, res) => {
     const { cleanText: afterEscalation, escalation } = extractEscalation(rawReplyText);
     if (escalation) {
       handleEscalation({ channel: "text", ...escalation }).catch(() => {});
-    } else {
-      // Backstop: the model didn't escalate, but if the customer just handed
-      // over a phone number or email (new this turn), it's a lead -- tell
-      // Jason regardless. Skipped when the model already escalated this turn
-      // so he doesn't get two emails for the same thing.
-      const userTexts = trimmedMessages.filter((m) => m.role === "user").map(messageText);
-      const lead = detectNewLead(userTexts);
-      if (lead) {
-        handleEscalation({ channel: "text", ...lead }).catch(() => {});
-      }
     }
 
     // Same deal for the marketing-info marker — can appear in the same reply
@@ -433,6 +423,20 @@ module.exports = async (req, res) => {
     const { cleanText: afterPromoOptin, promoOptin } = extractPromoOptin(afterCustomerInfo);
     if (promoOptin) {
       logPromoOptin({ channel: "text", ...promoOptin }).catch(() => {});
+    }
+
+    // Backstop: the model didn't escalate, but if the customer just handed
+    // over a phone number or email (new this turn), it's a lead -- tell
+    // Jason regardless. Skipped when the model already escalated this turn
+    // (no double emails), and a contact given as a promo-list opt-in is left
+    // out: those are saved to the opt-in table and listed in the weekly
+    // report instead of emailed one at a time.
+    if (!escalation) {
+      const userTexts = trimmedMessages.filter((m) => m.role === "user").map(messageText);
+      const lead = detectNewLead(userTexts, promoOptin ? [promoOptin.contactMethod] : []);
+      if (lead) {
+        handleEscalation({ channel: "text", ...lead }).catch(() => {});
+      }
     }
 
     // Add-to-cart is different from the three above: it's not just a backend

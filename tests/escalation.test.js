@@ -193,12 +193,15 @@ test("text chat: does not re-email on later turns once the number was already gi
 
 // --- integration: voice call end ----------------------------------------
 
-function voiceMocks({ sent, recentEscalationRows }) {
+function voiceMocks({ sent, recentEscalationRows, promoRows = [] }) {
   return async (url, opts) => {
     const u = String(url);
     if (u.includes("api.resend.com")) {
       sent.push(JSON.parse(opts.body));
       return { ok: true, status: 200, text: async () => "" };
+    }
+    if (u.includes("rucrak_promo_optins")) {
+      return { ok: true, status: 200, json: async () => promoRows };
     }
     if (u.includes("rucrak_chief_escalations")) {
       return { ok: true, status: 200, json: async () => recentEscalationRows };
@@ -324,5 +327,124 @@ test("voice: log_promo_optin tool saves the name and number", async () => {
     assert.equal(inserted.length, 1);
     assert.equal(inserted[0].customer_name, "Dave");
     assert.equal(inserted[0].contact_method, "4345479024");
+  });
+});
+
+// --- promo opt-ins are saved + reported weekly, NOT emailed one by one -----
+
+const OPTIN_EMAIL_ENV = { ...OPTIN_ENV, RESEND_API_KEY: "re_test", JASON_NOTIFY_EMAIL: "jason@example.com" };
+
+function optinWithResendMocks(replyText, inserted, sent) {
+  const base = optinMocks(replyText, inserted);
+  return async (url, opts) => {
+    if (String(url).includes("api.resend.com")) {
+      sent.push(JSON.parse(opts.body));
+      return { ok: true, status: 200, text: async () => "" };
+    }
+    return base(url, opts);
+  };
+}
+
+test("text chat: a promo opt-in is saved but does NOT email Jason", async () => {
+  const inserted = [];
+  const sent = [];
+  const reply = 'You are on the list!\n@@PROMO_OPTIN@@{"contactMethod":"434-547-9024","contactType":"phone","customerName":"Dave"}@@END@@';
+  await withEnvAndFetch(OPTIN_EMAIL_ENV, optinWithResendMocks(reply, inserted, sent), async () => {
+    const { req, res } = makeReqRes({
+      ip: "10.9.2.1",
+      body: { messages: [{ role: "user", content: "yes add me, I'm Dave, 434-547-9024" }] }
+    });
+    await chatHandler(req, res);
+    await tick();
+    assert.equal(inserted.length, 1, "opt-in saved");
+    assert.equal(sent.length, 0, "no lead email for a promo opt-in");
+  });
+});
+
+test("text chat: a separate callback number alongside a promo opt-in still emails Jason", async () => {
+  const inserted = [];
+  const sent = [];
+  const reply = 'Both noted!\n@@PROMO_OPTIN@@{"contactMethod":"dave@example.com","contactType":"email","customerName":"Dave"}@@END@@';
+  await withEnvAndFetch(OPTIN_EMAIL_ENV, optinWithResendMocks(reply, inserted, sent), async () => {
+    const { req, res } = makeReqRes({
+      ip: "10.9.2.2",
+      body: { messages: [{ role: "user", content: "sign me up at dave@example.com, and call me about a bulk order at 434-547-9024" }] }
+    });
+    await chatHandler(req, res);
+    await tick();
+    assert.equal(inserted.length, 1);
+    assert.equal(sent.length, 1, "the callback number is a real lead");
+    assert.ok(sent[0].text.includes("434-547-9024"));
+    assert.ok(!sent[0].text.includes("Contact: dave@example.com"), "the promo email is not the lead contact");
+  });
+});
+
+test("voice: a number logged as a promo opt-in during the call does NOT email Jason", async () => {
+  const sent = [];
+  await withEnvAndFetch(
+    VOICE_ENV,
+    voiceMocks({ sent, recentEscalationRows: [], promoRows: [{ contact_method: "4345479024" }] }),
+    async () => {
+      const { req, res } = makeReqRes({ body: VOICE_BODY });
+      await voiceLogHandler(req, res);
+      assert.equal(sent.length, 0);
+    }
+  );
+});
+
+test("weekly report lists promo sign-ups with name and number", async () => {
+  const reportHandler = require("../api/weekly-report.js");
+  const sent = [];
+  const fetchImpl = async (url, opts) => {
+    const u = String(url);
+    if (u.includes("api.anthropic.com")) {
+      return { ok: true, status: 200, json: async () => ({ content: [{ type: "text", text: "Quiet week." }] }) };
+    }
+    if (u.includes("api.resend.com")) {
+      sent.push(JSON.parse(opts.body));
+      return { ok: true, status: 200, text: async () => "" };
+    }
+    if (u.includes("rucrak_promo_optins")) {
+      return {
+        ok: true,
+        status: 200,
+        json: async () => [
+          { customer_name: "Dave", contact_method: "434-547-9024", contact_type: "phone", channel: "voice" },
+          { customer_name: null, contact_method: "sam@example.com", contact_type: "email", channel: "text" }
+        ]
+      };
+    }
+    return { ok: true, status: 200, json: async () => [] };
+  };
+  await withEnvAndFetch({ ...ENV, SUPABASE_URL: "https://fake.supabase.co", SUPABASE_SERVICE_KEY: "fake-key", CRON_SECRET: undefined }, fetchImpl, async () => {
+    const { req, res } = makeReqRes({ method: "GET", headers: {} });
+    await reportHandler(req, res);
+    assert.equal(res._status, 200);
+    assert.equal(sent.length, 1);
+    const body = sent[0].text;
+    assert.ok(body.includes("New promo list sign-ups this week (2):"));
+    assert.ok(body.includes("Dave — 434-547-9024 (phone, voice)"));
+    assert.ok(body.includes("(name not given) — sam@example.com (email, text)"));
+  });
+});
+
+test("weekly report says so when there were no promo sign-ups", async () => {
+  const reportHandler = require("../api/weekly-report.js");
+  const sent = [];
+  const fetchImpl = async (url, opts) => {
+    const u = String(url);
+    if (u.includes("api.anthropic.com")) {
+      return { ok: true, status: 200, json: async () => ({ content: [{ type: "text", text: "Quiet week." }] }) };
+    }
+    if (u.includes("api.resend.com")) {
+      sent.push(JSON.parse(opts.body));
+      return { ok: true, status: 200, text: async () => "" };
+    }
+    return { ok: true, status: 200, json: async () => [] };
+  };
+  await withEnvAndFetch({ ...ENV, SUPABASE_URL: "https://fake.supabase.co", SUPABASE_SERVICE_KEY: "fake-key", CRON_SECRET: undefined }, fetchImpl, async () => {
+    const { req, res } = makeReqRes({ method: "GET", headers: {} });
+    await reportHandler(req, res);
+    assert.ok(sent[0].text.includes("New promo list sign-ups this week: none."));
   });
 });

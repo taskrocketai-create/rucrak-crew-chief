@@ -143,7 +143,24 @@ function buildTranscriptFile(calls) {
     .join("\n");
 }
 
-async function sendReportEmail(reportText, unresolvedEscalations, calls) {
+// Promo list sign-ups are NOT emailed one by one (they aren't questions for
+// Jason) -- they're listed here, straight from the table rather than through
+// the model, so every name and number in the report is exact.
+function formatPromoOptins(rows) {
+  const list = rows || [];
+  if (list.length === 0) return "\n\nNew promo list sign-ups this week: none.";
+  const lines = list
+    .slice()
+    .reverse() // oldest first
+    .map((r) => {
+      const who = r.customer_name || "(name not given)";
+      const kind = [r.contact_type, r.channel].filter(Boolean).join(", ");
+      return `- ${who} — ${r.contact_method}${kind ? ` (${kind})` : ""}`;
+    });
+  return `\n\nNew promo list sign-ups this week (${list.length}):\n${lines.join("\n")}`;
+}
+
+async function sendReportEmail(reportText, unresolvedEscalations, calls, promoOptins) {
   const apiKey = process.env.RESEND_API_KEY;
   const toEmail = process.env.JASON_NOTIFY_EMAIL;
   const fromEmail = process.env.CREWCHIEF_FROM_EMAIL || "crewchief@send.rucrak.com";
@@ -166,7 +183,7 @@ async function sendReportEmail(reportText, unresolvedEscalations, calls) {
     : "";
 
   const transcriptNote = "\n\nFull transcripts for every conversation this week are attached as a text file.";
-  const body = (reportText || "(Report generation failed this week — check Vercel logs for api/weekly-report.js.)") + unresolvedSection + transcriptNote;
+  const body = (reportText || "(Report generation failed this week — check Vercel logs for api/weekly-report.js.)") + unresolvedSection + formatPromoOptins(promoOptins) + transcriptNote;
 
   const dateLabel = new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" });
   const transcriptFile = buildTranscriptFile(calls);
@@ -246,16 +263,17 @@ module.exports = async (req, res) => {
   const sinceIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
   try {
-    const [calls, escalations, marketingNotes] = await Promise.all([
+    const [calls, escalations, marketingNotes, promoOptins] = await Promise.all([
       fetchSupabaseRows("rucrak_chief_calls", sinceIso),
       fetchSupabaseRows("rucrak_chief_escalations", sinceIso),
-      fetchSupabaseRows("rucrak_marketing_notes", sinceIso)
+      fetchSupabaseRows("rucrak_marketing_notes", sinceIso),
+      fetchSupabaseRows("rucrak_promo_optins", sinceIso)
     ]);
 
     const unresolvedEscalations = escalations.filter((e) => !e.resolved);
 
     const reportText = await generateReportText({ calls, escalations, unresolvedEscalations, marketingNotes });
-    const sent = await sendReportEmail(reportText, unresolvedEscalations, calls);
+    const sent = await sendReportEmail(reportText, unresolvedEscalations, calls, promoOptins);
 
     // Only wipe transcripts once the email actually went out — if the send
     // failed, keep them so next run (or a manual retry) can still report them.
