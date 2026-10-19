@@ -256,3 +256,73 @@ test("voice: a number spoken in words is recorded as digits in the email to Jaso
     assert.ok(sent[0].text.includes("Contact: 434-547-9024"), "contact should be the digits, not the words");
   });
 });
+
+// --- promo opt-in saves the name along with the contact -------------------
+
+const OPTIN_ENV = { ANTHROPIC_API_KEY: "test-key", RESEND_API_KEY: undefined, JASON_NOTIFY_EMAIL: undefined, SUPABASE_URL: "https://fake.supabase.co", SUPABASE_SERVICE_KEY: "fake-key" };
+
+function optinMocks(replyText, inserted) {
+  return async (url, opts) => {
+    const u = String(url);
+    if (u.includes("api.anthropic.com")) {
+      return { ok: true, status: 200, json: async () => ({ content: [{ type: "text", text: replyText }] }) };
+    }
+    if (u.includes("rucrak_promo_optins")) {
+      inserted.push(JSON.parse(opts.body)[0]);
+      return { ok: true, status: 201, json: async () => ({}) };
+    }
+    if (u.includes("rucrak_live_price_cache")) {
+      return { ok: false, status: 404, json: async () => [] };
+    }
+    return { ok: true, status: 201, json: async () => ({}) }; // calls log, escalation log, etc.
+  };
+}
+
+test("text chat: promo opt-in saves the customer's name and number", async () => {
+  const inserted = [];
+  const reply = 'Done, you are on the list!\n@@PROMO_OPTIN@@{"contactMethod":"434-547-9024","contactType":"phone","customerName":"Dave"}@@END@@';
+  await withEnvAndFetch(OPTIN_ENV, optinMocks(reply, inserted), async () => {
+    const { req, res } = makeReqRes({
+      ip: "10.9.1.1",
+      body: { messages: [{ role: "user", content: "yes, add me. I'm Dave, 434-547-9024" }] }
+    });
+    await chatHandler(req, res);
+    await tick();
+    assert.equal(inserted.length, 1);
+    assert.equal(inserted[0].customer_name, "Dave");
+    assert.equal(inserted[0].contact_method, "434-547-9024");
+    assert.equal(inserted[0].contact_type, "phone");
+    assert.ok(!res._json.text.includes("@@"), "marker must be stripped from what the customer sees");
+  });
+});
+
+test("text chat: promo opt-in without a name still saves the contact", async () => {
+  const inserted = [];
+  const reply = 'You are on the list!\n@@PROMO_OPTIN@@{"contactMethod":"dave@example.com","contactType":"email"}@@END@@';
+  await withEnvAndFetch(OPTIN_ENV, optinMocks(reply, inserted), async () => {
+    const { req, res } = makeReqRes({
+      ip: "10.9.1.2",
+      body: { messages: [{ role: "user", content: "sure, dave@example.com" }] }
+    });
+    await chatHandler(req, res);
+    await tick();
+    assert.equal(inserted.length, 1);
+    assert.equal(inserted[0].customer_name, null);
+    assert.equal(inserted[0].contact_method, "dave@example.com");
+  });
+});
+
+test("voice: log_promo_optin tool saves the name and number", async () => {
+  const promoHandler = require("../api/log-promo-optin.js");
+  const inserted = [];
+  await withEnvAndFetch(OPTIN_ENV, optinMocks("", inserted), async () => {
+    const { req, res } = makeReqRes({
+      body: { message: { toolCallList: [{ id: "tc1", function: { arguments: { contactMethod: "4345479024", contactType: "phone", customerName: "Dave" } } }] } }
+    });
+    await promoHandler(req, res);
+    assert.equal(res._json.results[0].toolCallId, "tc1");
+    assert.equal(inserted.length, 1);
+    assert.equal(inserted[0].customer_name, "Dave");
+    assert.equal(inserted[0].contact_method, "4345479024");
+  });
+});

@@ -261,7 +261,7 @@ async function logMarketingInfo({ channel, vehicle, region, referralSource, useC
 // contact info, since it's for an actual promotional contact list. Separate
 // table on purpose, so it's never accidentally mixed with the anonymous
 // aggregate marketing-context data.
-async function logPromoOptin({ channel, contactMethod, contactType }) {
+async function logPromoOptin({ channel, contactMethod, contactType, customerName }) {
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
   if (!supabaseUrl || !supabaseKey) return; // logging not configured — skip quietly
@@ -279,7 +279,8 @@ async function logPromoOptin({ channel, contactMethod, contactType }) {
       body: JSON.stringify([{
         channel,
         contact_method: contactMethod,
-        contact_type: contactType || null
+        contact_type: contactType || null,
+        customer_name: customerName ? String(customerName).trim().slice(0, 200) : null
       }])
     });
   } catch (err) {

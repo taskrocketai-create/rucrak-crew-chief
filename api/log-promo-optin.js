@@ -37,7 +37,9 @@ async function handleOneCall(toolCall) {
       return { toolCallId, result: safeSingleLine("No contact info provided, nothing logged.") };
     }
 
-    await logPromoOptin({ channel: "voice", contactMethod, contactType });
+    const customerName = args.customerName || args.customer_name || null;
+
+    await logPromoOptin({ channel: "voice", contactMethod, contactType, customerName });
     return { toolCallId, result: safeSingleLine("Got it, added to the list.") };
   } catch (err) {
     console.error("log-promo-optin error for one call (non-fatal to the call):", err.message);

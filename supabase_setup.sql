@@ -121,8 +121,12 @@ create table if not exists rucrak_promo_optins (
   created_at timestamptz not null default now(),
   channel text,             -- 'text' or 'voice'
   contact_method text,      -- the actual email address or phone number given
-  contact_type text          -- 'email' or 'phone'
+  contact_type text,         -- 'email' or 'phone'
+  customer_name text         -- optional; added later (see ALTER below)
 );
+
+-- For databases created before customer_name existed. Safe to re-run.
+alter table rucrak_promo_optins add column if not exists customer_name text;
 
 create index if not exists rucrak_promo_optins_created_at_idx on rucrak_promo_optins (created_at desc);
 

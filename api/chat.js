@@ -80,7 +80,7 @@ function extractEscalation(replyText) {
 
 // --- Promo opt-in marker parsing ---------------------------------------------
 // Same pattern again, third tag:
-//   @@PROMO_OPTIN@@{"contactMethod":"...","contactType":"email or phone"}@@END@@
+//   @@PROMO_OPTIN@@{"contactMethod":"...","contactType":"email or phone","customerName":"..."}@@END@@
 const PROMO_OPTIN_MARKER_RE = /@@PROMO_OPTIN@@(.*?)@@END@@/s;
 
 function extractPromoOptin(replyText) {
@@ -94,7 +94,8 @@ function extractPromoOptin(replyText) {
     if (parsed.contactMethod) {
       promoOptin = {
         contactMethod: parsed.contactMethod,
-        contactType: parsed.contactType || null
+        contactType: parsed.contactType || null,
+        customerName: parsed.customerName || null
       };
     }
   } catch (err) {
