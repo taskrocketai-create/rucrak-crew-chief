@@ -4,7 +4,7 @@
   "private": true,
   "description": "rucRak Crew Chief customer support chatbot — static frontend + Vercel serverless API proxy to Claude.",
   "scripts": {
-    "test": "node --test tests/chat.test.js"
+    "test": "node --test tests/*.test.js"
   },
   "engines": {
     "node": ">=18"

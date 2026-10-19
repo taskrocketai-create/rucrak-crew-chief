@@ -22,7 +22,17 @@
 
 const SYSTEM_PROMPT = require('./_prompt.js');
 const { applyLivePricing } = require('./_live_pricing.js');
-const { handleEscalation, logMarketingInfo, logPromoOptin } = require('./_notify.js');
+const { handleEscalation, logMarketingInfo, logPromoOptin, detectNewLead } = require('./_notify.js');
+
+// Plain text of a message whether content is a string or an array of blocks.
+function messageText(m) {
+  if (!m) return "";
+  if (typeof m.content === "string") return m.content;
+  if (Array.isArray(m.content)) {
+    return m.content.filter((b) => b && b.type === "text").map((b) => b.text).join("\n");
+  }
+  return "";
+}
 
 const ALLOWED_ORIGINS = (process.env.ALLOWED_ORIGINS || "*")
   .split(",")
@@ -398,6 +408,16 @@ module.exports = async (req, res) => {
     const { cleanText: afterEscalation, escalation } = extractEscalation(rawReplyText);
     if (escalation) {
       handleEscalation({ channel: "text", ...escalation }).catch(() => {});
+    } else {
+      // Backstop: the model didn't escalate, but if the customer just handed
+      // over a phone number or email (new this turn), it's a lead -- tell
+      // Jason regardless. Skipped when the model already escalated this turn
+      // so he doesn't get two emails for the same thing.
+      const userTexts = trimmedMessages.filter((m) => m.role === "user").map(messageText);
+      const lead = detectNewLead(userTexts);
+      if (lead) {
+        handleEscalation({ channel: "text", ...lead }).catch(() => {});
+      }
     }
 
     // Same deal for the marketing-info marker — can appear in the same reply

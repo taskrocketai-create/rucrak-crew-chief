@@ -20,8 +20,45 @@
 // Expected POST body:
 //   { transcript: [ { role: "user"|"assistant", text: "..." }, ... ] }
 
+const { handleEscalation, detectLeadInTranscript } = require('./_notify.js');
+
 function extractPlainText(text) {
   return String(text || "").trim();
+}
+
+// Did Daryl already escalate (via the flag_escalation tool) in the last 20
+// minutes? If so, the backstop stays quiet. If the check itself fails or
+// Supabase isn't configured, answer false -- a duplicate email is better
+// than a missed lead.
+async function voiceEscalationAlreadyLogged() {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+  if (!supabaseUrl || !supabaseKey) return false;
+  try {
+    const since = new Date(Date.now() - 20 * 60 * 1000).toISOString();
+    const r = await fetch(
+      `${supabaseUrl}/rest/v1/rucrak_chief_escalations?channel=eq.voice&created_at=gte.${encodeURIComponent(since)}&select=id&limit=1`,
+      { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
+    );
+    if (!r.ok) return false;
+    const rows = await r.json();
+    return Array.isArray(rows) && rows.length > 0;
+  } catch (err) {
+    return false;
+  }
+}
+
+// Backstop: a phone number or email spoken during the call is a lead, whether
+// or not Daryl remembered to call flag_escalation.
+async function backstopVoiceLead(userTurns) {
+  try {
+    const lead = detectLeadInTranscript(userTurns.map((t) => extractPlainText(t.text)));
+    if (!lead) return;
+    if (await voiceEscalationAlreadyLogged()) return;
+    await handleEscalation({ channel: "voice", ...lead });
+  } catch (err) {
+    console.error("Voice lead backstop failed (non-fatal):", err.message);
+  }
 }
 
 function renderTranscript(turns) {
@@ -57,6 +94,8 @@ module.exports = async (req, res) => {
     if (userTurns.length === 0) {
       return res.status(200).json({ ok: true, skipped: true });
     }
+
+    await backstopVoiceLead(userTurns);
 
     const supabaseUrl = process.env.SUPABASE_URL;
     const supabaseKey = process.env.SUPABASE_SERVICE_KEY;

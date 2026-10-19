@@ -143,6 +143,55 @@ async function handleEscalation(details) {
   ]);
 }
 
+// --- Deterministic lead backstop ---------------------------------------
+// Escalation used to depend entirely on the model deciding to emit the
+// escalation marker / call flag_escalation. Real miss: a customer left a phone
+// number mid-chat and nobody was told. This is the safety net -- plain code,
+// no model judgment: if a customer hands over a phone number or email that
+// hasn't appeared earlier in the conversation, it's a lead and Jason gets
+// the email, whether or not the model remembered to escalate.
+const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
+// US-style 10-digit numbers, optional +1, any common separators. Digit
+// lookarounds keep long IDs (variant IDs, order numbers) from matching.
+const PHONE_RE = /(?<!\d)(?:\+?1[\s.\-]?)?\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}(?!\d)/g;
+
+function findContacts(text) {
+  const t = String(text || "");
+  return [...(t.match(EMAIL_RE) || []), ...(t.match(PHONE_RE) || [])].map((s) => s.trim());
+}
+
+function contactKey(c) {
+  return c.includes("@") ? c.toLowerCase() : c.replace(/\D/g, "").replace(/^1(?=\d{10}$)/, "");
+}
+
+// userTexts: customer messages in order, newest last. Returns an escalation
+// payload if the newest message contains a contact not seen earlier, else null.
+function detectNewLead(userTexts) {
+  if (!Array.isArray(userTexts) || userTexts.length === 0) return null;
+  const latest = userTexts[userTexts.length - 1];
+  const seen = new Set(userTexts.slice(0, -1).flatMap(findContacts).map(contactKey));
+  const fresh = findContacts(latest).filter((c) => !seen.has(contactKey(c)));
+  if (fresh.length === 0) return null;
+  return buildLeadEscalation(userTexts.slice(-6), fresh);
+}
+
+// Voice: the whole transcript arrives at once at call end, so any contact
+// anywhere in the customer's turns counts.
+function detectLeadInTranscript(userTexts) {
+  const all = [...new Set((userTexts || []).flatMap(findContacts).map((c) => c))];
+  if (all.length === 0) return null;
+  return buildLeadEscalation(userTexts.slice(-8), all);
+}
+
+function buildLeadEscalation(recentUserTexts, contacts) {
+  const context = recentUserTexts.map((s) => String(s).replace(/\s+/g, " ").trim()).filter(Boolean).join(" | ");
+  return {
+    question: `LEAD — customer shared contact info. What they said: ${context}`.slice(0, 1500),
+    customerName: null,
+    customerContact: [...new Set(contacts)].join(", ")
+  };
+}
+
 // --- Marketing context logging -----------------------------------------
 // Separate from escalations — this is just aggregate data collection, no
 // email notification needed (nobody needs to be paged over "customer is in
@@ -209,4 +258,7 @@ async function logPromoOptin({ channel, contactMethod, contactType }) {
   }
 }
 
-module.exports = { sendEscalationEmail, logEscalation, handleEscalation, logMarketingInfo, logPromoOptin };
+module.exports = {
+  sendEscalationEmail, logEscalation, handleEscalation, logMarketingInfo, logPromoOptin,
+  findContacts, detectNewLead, detectLeadInTranscript
+};
