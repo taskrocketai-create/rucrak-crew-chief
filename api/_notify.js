@@ -155,8 +155,37 @@ const EMAIL_RE = /[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Za-z]{2,}/g;
 // lookarounds keep long IDs (variant IDs, order numbers) from matching.
 const PHONE_RE = /(?<!\d)(?:\+?1[\s.\-]?)?\(?\d{3}\)?[\s.\-]?\d{3}[\s.\-]?\d{4}(?!\d)/g;
 
+// Voice transcripts often spell numbers out ("four three four, five four seven,
+// nine zero two four", "oh" for zero, "double seven"). Turn any run of spoken
+// digits that adds up to a phone number (10-11 digits) into real digits so the
+// phone matcher can see it. Shorter runs are left alone ("one or two kids").
+const DIGIT_WORDS = { zero: "0", oh: "0", one: "1", two: "2", three: "3", four: "4", five: "5", six: "6", seven: "7", eight: "8", nine: "9" };
+const WORD_ALT = Object.keys(DIGIT_WORDS).join("|");
+const SPOKEN_TOKEN = `(?:(?:double|triple)\\s+(?:${WORD_ALT})|(?:${WORD_ALT})|\\d+)`;
+const SPOKEN_RUN_RE = new RegExp(
+  `(?<![A-Za-z0-9])${SPOKEN_TOKEN}(?:[\\s,.\\-]+${SPOKEN_TOKEN})+(?![A-Za-z0-9])`,
+  "gi"
+);
+
+function normalizeSpokenDigits(text) {
+  return String(text || "").replace(SPOKEN_RUN_RE, (run) => {
+    const tokens = run.match(new RegExp(SPOKEN_TOKEN, "gi")) || [];
+    const digits = tokens
+      .map((tok) => {
+        const parts = tok.toLowerCase().split(/\s+/);
+        if (parts[0] === "double") return DIGIT_WORDS[parts[1]].repeat(2);
+        if (parts[0] === "triple") return DIGIT_WORDS[parts[1]].repeat(3);
+        return DIGIT_WORDS[parts[0]] !== undefined ? DIGIT_WORDS[parts[0]] : parts[0];
+      })
+      .join("");
+    if (digits.length === 10) return `${digits.slice(0, 3)}-${digits.slice(3, 6)}-${digits.slice(6)}`;
+    if (digits.length === 11 && digits[0] === "1") return `+1 ${digits.slice(1, 4)}-${digits.slice(4, 7)}-${digits.slice(7)}`;
+    return run; // not phone-length: leave the customer's words untouched
+  });
+}
+
 function findContacts(text) {
-  const t = String(text || "");
+  const t = normalizeSpokenDigits(text);
   return [...(t.match(EMAIL_RE) || []), ...(t.match(PHONE_RE) || [])].map((s) => s.trim());
 }
 
@@ -260,5 +289,5 @@ async function logPromoOptin({ channel, contactMethod, contactType }) {
 
 module.exports = {
   sendEscalationEmail, logEscalation, handleEscalation, logMarketingInfo, logPromoOptin,
-  findContacts, detectNewLead, detectLeadInTranscript
+  findContacts, normalizeSpokenDigits, detectNewLead, detectLeadInTranscript
 };

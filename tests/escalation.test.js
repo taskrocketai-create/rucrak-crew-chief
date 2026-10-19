@@ -9,7 +9,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { detectNewLead, detectLeadInTranscript, findContacts } = require("../api/_notify.js");
+const { detectNewLead, detectLeadInTranscript, findContacts, normalizeSpokenDigits } = require("../api/_notify.js");
 const chatHandler = require("../api/chat.js");
 const voiceLogHandler = require("../api/log-voice-call.js");
 
@@ -87,6 +87,22 @@ test("detectNewLead returns null with no contact info", () => {
 test("detectLeadInTranscript finds a contact anywhere in the customer's turns", () => {
   const lead = detectLeadInTranscript(["hi", "my email is a@b.co", "thanks"]);
   assert.equal(lead.customerContact, "a@b.co");
+});
+
+// --- unit: spoken (voice) numbers ----------------------------------------
+
+test("spoken phone numbers become real digits", () => {
+  assert.deepEqual(findContacts("it is four three four five four seven nine zero two four"), ["434-547-9024"]);
+  assert.deepEqual(findContacts("four three four, five four seven, nine oh two four"), ["434-547-9024"], "commas and 'oh'");
+  assert.deepEqual(findContacts("six three zero nine two one nine three double seven"), ["630-921-9377"], "'double'");
+  assert.deepEqual(findContacts("4 3 4 5 4 7 9 0 2 4"), ["434-547-9024"], "single digits with spaces");
+  assert.deepEqual(findContacts("one four three four five four seven nine zero two four"), ["+1 434-547-9024"], "leading one");
+});
+
+test("short or non-phone spoken number runs are left alone", () => {
+  assert.equal(normalizeSpokenDigits("I have two or three kids"), "I have two or three kids");
+  assert.equal(normalizeSpokenDigits("one two three four five"), "one two three four five");
+  assert.equal(findContacts("it weighs one hundred fifty pounds").length, 0);
 });
 
 // --- integration: text chat ---------------------------------------------
@@ -220,5 +236,23 @@ test("voice: stays quiet when Daryl already escalated during the call", async ()
     const { req, res } = makeReqRes({ body: VOICE_BODY });
     await voiceLogHandler(req, res);
     assert.equal(sent.length, 0);
+  });
+});
+
+test("voice: a number spoken in words is recorded as digits in the email to Jason", async () => {
+  const sent = [];
+  await withEnvAndFetch(VOICE_ENV, voiceMocks({ sent, recentEscalationRows: [] }), async () => {
+    const { req, res } = makeReqRes({
+      body: {
+        transcript: [
+          { role: "user", text: "Does it fit a 2023 Bronco?" },
+          { role: "assistant", text: "It does." },
+          { role: "user", text: "Great, call me at four three four, five four seven, nine zero two four" }
+        ]
+      }
+    });
+    await voiceLogHandler(req, res);
+    assert.equal(sent.length, 1);
+    assert.ok(sent[0].text.includes("Contact: 434-547-9024"), "contact should be the digits, not the words");
   });
 });
