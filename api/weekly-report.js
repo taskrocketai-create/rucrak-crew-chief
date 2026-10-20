@@ -41,6 +41,46 @@ async function fetchSupabaseRows(table, sinceIso) {
   return res.json();
 }
 
+// Every escalation still marked unresolved, no matter how old. The weekly
+// window only shows this week's, which let a July escalation drop out of
+// sight for months -- nothing reminded anyone it was still open.
+async function fetchOpenEscalations() {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+  if (!supabaseUrl || !supabaseKey) return [];
+  try {
+    const res = await fetch(
+      `${supabaseUrl}/rest/v1/rucrak_chief_escalations?resolved=eq.false&order=created_at.asc&limit=200`,
+      { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
+    );
+    if (!res.ok) {
+      console.error("Failed to fetch open escalations:", res.status, await res.text());
+      return null; // distinguish "couldn't check" from "none open"
+    }
+    return res.json();
+  } catch (err) {
+    console.error("Failed to fetch open escalations:", err.message);
+    return null;
+  }
+}
+
+function formatOpenEscalations(open, fallbackThisWeek) {
+  // If the all-time lookup failed, fall back to this week's unresolved so the
+  // section is never silently empty.
+  const list = open === null ? fallbackThisWeek : open;
+  if (!list || list.length === 0) return "\n\nOpen customer issues: none.";
+  const now = Date.now();
+  const lines = list.map((e) => {
+    const days = e.created_at ? Math.max(0, Math.floor((now - new Date(e.created_at).getTime()) / 86400000)) : null;
+    const age = days === null ? "" : days === 0 ? "today" : `${days} day${days === 1 ? "" : "s"} open`;
+    const old = days !== null && days > 7 ? " — OVER A WEEK" : "";
+    const who = [e.customer_name, e.customer_contact].filter(Boolean).join(", ") || "no contact given";
+    return `- ${e.question} (${who}; ${[e.channel, age].filter(Boolean).join(", ")})${old}`;
+  });
+  const note = open === null ? " (could not load full history; showing this week only)" : "";
+  return `\n\nOpen customer issues — still unresolved, any age (${list.length})${note}:\n${lines.join("\n")}`;
+}
+
 function countBy(rows, field) {
   const counts = {};
   for (const row of rows) {
@@ -160,7 +200,7 @@ function formatPromoOptins(rows) {
   return `\n\nNew promo list sign-ups this week (${list.length}):\n${lines.join("\n")}`;
 }
 
-async function sendReportEmail(reportText, unresolvedEscalations, calls, promoOptins) {
+async function sendReportEmail(reportText, unresolvedEscalations, calls, promoOptins, openEscalations) {
   const apiKey = process.env.RESEND_API_KEY;
   const toEmail = process.env.JASON_NOTIFY_EMAIL;
   const fromEmail = process.env.CREWCHIEF_FROM_EMAIL || "crewchief@send.rucrak.com";
@@ -176,11 +216,7 @@ async function sendReportEmail(reportText, unresolvedEscalations, calls, promoOp
     .filter(Boolean);
   const recipients = [toEmail, ...extraRecipients.filter((e) => e !== toEmail)];
 
-  const unresolvedSection = unresolvedEscalations.length
-    ? "\n\nStill unresolved from this week:\n" + unresolvedEscalations
-        .map((e) => `- ${e.question}${e.customer_contact ? ` (contact: ${e.customer_contact})` : ""}`)
-        .join("\n")
-    : "";
+  const unresolvedSection = formatOpenEscalations(openEscalations, unresolvedEscalations);
 
   const transcriptNote = "\n\nFull transcripts for every conversation this week are attached as a text file.";
   const body = (reportText || "(Report generation failed this week — check Vercel logs for api/weekly-report.js.)") + unresolvedSection + formatPromoOptins(promoOptins) + transcriptNote;
@@ -263,17 +299,18 @@ module.exports = async (req, res) => {
   const sinceIso = new Date(Date.now() - 7 * 24 * 60 * 60 * 1000).toISOString();
 
   try {
-    const [calls, escalations, marketingNotes, promoOptins] = await Promise.all([
+    const [calls, escalations, marketingNotes, promoOptins, openEscalations] = await Promise.all([
       fetchSupabaseRows("rucrak_chief_calls", sinceIso),
       fetchSupabaseRows("rucrak_chief_escalations", sinceIso),
       fetchSupabaseRows("rucrak_marketing_notes", sinceIso),
-      fetchSupabaseRows("rucrak_promo_optins", sinceIso)
+      fetchSupabaseRows("rucrak_promo_optins", sinceIso),
+      fetchOpenEscalations()
     ]);
 
     const unresolvedEscalations = escalations.filter((e) => !e.resolved);
 
     const reportText = await generateReportText({ calls, escalations, unresolvedEscalations, marketingNotes });
-    const sent = await sendReportEmail(reportText, unresolvedEscalations, calls, promoOptins);
+    const sent = await sendReportEmail(reportText, unresolvedEscalations, calls, promoOptins, openEscalations);
 
     // Only wipe transcripts once the email actually went out — if the send
     // failed, keep them so next run (or a manual retry) can still report them.

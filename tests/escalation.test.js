@@ -448,3 +448,72 @@ test("weekly report says so when there were no promo sign-ups", async () => {
     assert.ok(sent[0].text.includes("New promo list sign-ups this week: none."));
   });
 });
+
+// --- weekly report lists EVERY open escalation, any age --------------------
+
+function reportFetch({ sent, openRows, openOk = true, weekRows = [] }) {
+  return async (url, opts) => {
+    const u = String(url);
+    if (u.includes("api.anthropic.com")) {
+      return { ok: true, status: 200, json: async () => ({ content: [{ type: "text", text: "Quiet week." }] }) };
+    }
+    if (u.includes("api.resend.com")) {
+      sent.push(JSON.parse(opts.body));
+      return { ok: true, status: 200, text: async () => "" };
+    }
+    if (u.includes("rucrak_chief_escalations") && u.includes("resolved=eq.false")) {
+      return openOk
+        ? { ok: true, status: 200, json: async () => openRows }
+        : { ok: false, status: 500, text: async () => "boom", json: async () => ({}) };
+    }
+    if (u.includes("rucrak_chief_escalations")) {
+      return { ok: true, status: 200, json: async () => weekRows };
+    }
+    return { ok: true, status: 200, json: async () => [] };
+  };
+}
+
+const REPORT_ENV = { ...ENV, SUPABASE_URL: "https://fake.supabase.co", SUPABASE_SERVICE_KEY: "fake-key", CRON_SECRET: undefined };
+const daysAgo = (n) => new Date(Date.now() - n * 86400000).toISOString();
+
+test("weekly report lists an old unresolved escalation that is outside the 7-day window", async () => {
+  const reportHandler = require("../api/weekly-report.js");
+  const sent = [];
+  const openRows = [
+    { created_at: daysAgo(82), channel: "voice", question: "Grunt basket lost on highway", customer_name: "Ralph", customer_contact: "123-456-7-8-9", resolved: false },
+    { created_at: daysAgo(7), channel: "voice", question: "Received only hardware and a flagpole", customer_name: "Edward Tunney", customer_contact: "630-921-3779", resolved: false }
+  ];
+  await withEnvAndFetch(REPORT_ENV, reportFetch({ sent, openRows }), async () => {
+    const { req, res } = makeReqRes({ method: "GET", headers: {} });
+    await reportHandler(req, res);
+    assert.equal(sent.length, 1);
+    const body = sent[0].text;
+    assert.ok(body.includes("Open customer issues — still unresolved, any age (2)"));
+    assert.ok(body.includes("Grunt basket lost on highway (Ralph, 123-456-7-8-9; voice, 82 days open) — OVER A WEEK"));
+    assert.ok(body.includes("Edward Tunney, 630-921-3779; voice, 7 days open)"));
+    assert.ok(!body.includes("Edward Tunney, 630-921-3779; voice, 7 days open) — OVER"), "exactly 7 days is not over a week");
+  });
+});
+
+test("weekly report says no open issues when nothing is unresolved", async () => {
+  const reportHandler = require("../api/weekly-report.js");
+  const sent = [];
+  await withEnvAndFetch(REPORT_ENV, reportFetch({ sent, openRows: [] }), async () => {
+    const { req, res } = makeReqRes({ method: "GET", headers: {} });
+    await reportHandler(req, res);
+    assert.ok(sent[0].text.includes("Open customer issues: none."));
+  });
+});
+
+test("weekly report falls back to this week's unresolved if the full lookup fails (never silently empty)", async () => {
+  const reportHandler = require("../api/weekly-report.js");
+  const sent = [];
+  const weekRows = [{ created_at: daysAgo(1), channel: "text", question: "Fitment question", customer_name: null, customer_contact: "a@b.co", resolved: false }];
+  await withEnvAndFetch(REPORT_ENV, reportFetch({ sent, openRows: [], openOk: false, weekRows }), async () => {
+    const { req, res } = makeReqRes({ method: "GET", headers: {} });
+    await reportHandler(req, res);
+    const body = sent[0].text;
+    assert.ok(body.includes("could not load full history; showing this week only"));
+    assert.ok(body.includes("Fitment question"));
+  });
+});
