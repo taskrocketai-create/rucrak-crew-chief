@@ -123,6 +123,18 @@ Vapi invokes directly when the assistant decides to escalate.
 | `JASON_NOTIFY_EMAIL` | the real inbox that should receive these (Jason's actual email) |
 | `CREWCHIEF_FROM_EMAIL` | optional — defaults to `crewchief@send.rucrak.com` if unset, matching the domain actually verified above. If you verify a different domain, set this explicitly to match it — the code's default won't send successfully from an unverified domain. |
 
+**Text message alert (optional)** — escalations can also text Jason via Twilio. Does nothing unless every one of these is set (use `TWILIO_FROM_NUMBER` *or* `TWILIO_MESSAGING_SERVICE_SID`):
+
+| Key | Value |
+|---|---|
+| `TWILIO_ACCOUNT_SID` | your Twilio Account SID |
+| `TWILIO_AUTH_TOKEN` | your Twilio Auth Token |
+| `TWILIO_FROM_NUMBER` | the Twilio number to send from, E.164 (e.g. `+19195550100`) |
+| `TWILIO_MESSAGING_SERVICE_SID` | alternative to the From number — a Messaging Service tied to your A2P registration |
+| `JASON_NOTIFY_PHONE` | the mobile to text; a comma-separated list texts several people |
+
+US carriers filter unregistered 10-digit numbers, so the sending number needs A2P 10DLC registration (or use a toll-free number with verification). At most 5 escalations an hour trigger a text; the email always sends regardless.
+
 **2. Supabase (for the distinct escalation log)**
 - Run the second half of `supabase_setup.sql` (already includes both tables)
   — creates `rucrak_chief_escalations`, separate from the regular call log

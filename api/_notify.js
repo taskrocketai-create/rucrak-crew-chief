@@ -108,6 +108,89 @@ async function sendEscalationEmail({ channel, question, customerName, customerCo
   }
 }
 
+// --- Text message to Jason ------------------------------------------------
+// Escalations also text Jason so a customer waiting on him doesn't sit in a
+// shared inbox. Uses Twilio's REST API directly (no SDK). Entirely opt-in:
+// does nothing unless ALL of these are set in Vercel:
+//   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN
+//   TWILIO_FROM_NUMBER (E.164, e.g. +19195550100)  -- or TWILIO_MESSAGING_SERVICE_SID
+//   JASON_NOTIFY_PHONE  (his mobile; a comma-separated list texts several people)
+// Best-effort and non-fatal like the email -- a failed text never affects the
+// customer's conversation or the email/log.
+const SMS_MAX_PER_HOUR = 5; // flood guard so one bad actor can't buzz Jason all night
+
+function toE164(raw) {
+  const digits = String(raw || "").replace(/\D/g, "");
+  if (digits.length === 10) return `+1${digits}`;
+  if (digits.length === 11 && digits[0] === "1") return `+${digits}`;
+  return digits.length >= 8 ? `+${digits}` : null;
+}
+
+function buildSmsBody({ channel, question, customerName, customerContact }) {
+  const q = String(question || "(no details)").replace(/\s+/g, " ").trim();
+  const qShort = q.length > 140 ? q.slice(0, 137) + "..." : q;
+  const who = [customerName, customerContact].filter(Boolean).join(" ") || "no contact given";
+  return `Crew Chief (${channel}): ${qShort} | ${who} | Details in your email.`;
+}
+
+// True if we've already texted the max in the past hour. Counts escalation
+// rows (one per escalation). Fails OPEN: if the check can't run, send anyway --
+// a missed alert is worse than an extra text.
+async function smsFloodGuardTripped() {
+  const supabaseUrl = process.env.SUPABASE_URL;
+  const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
+  if (!supabaseUrl || !supabaseKey) return false;
+  try {
+    const since = new Date(Date.now() - 60 * 60 * 1000).toISOString();
+    const r = await fetch(
+      `${supabaseUrl}/rest/v1/rucrak_chief_escalations?created_at=gte.${encodeURIComponent(since)}&select=id&limit=${SMS_MAX_PER_HOUR + 1}`,
+      { headers: { apikey: supabaseKey, Authorization: `Bearer ${supabaseKey}` } }
+    );
+    if (!r.ok) return false;
+    const rows = await r.json();
+    return Array.isArray(rows) && rows.length > SMS_MAX_PER_HOUR;
+  } catch (err) {
+    return false;
+  }
+}
+
+async function sendEscalationSms(details) {
+  const sid = process.env.TWILIO_ACCOUNT_SID;
+  const token = process.env.TWILIO_AUTH_TOKEN;
+  const from = process.env.TWILIO_FROM_NUMBER;
+  const service = process.env.TWILIO_MESSAGING_SERVICE_SID;
+  const toList = String(process.env.JASON_NOTIFY_PHONE || "").split(",").map(toE164).filter(Boolean);
+
+  if (!sid || !token || (!from && !service) || toList.length === 0) {
+    return; // not configured -- quietly skip, same as the email does
+  }
+  if (await smsFloodGuardTripped()) {
+    console.log("Escalation text skipped -- more than " + SMS_MAX_PER_HOUR + " escalations in the last hour (email still sent).");
+    return;
+  }
+
+  const body = buildSmsBody(details);
+  const auth = "Basic " + Buffer.from(`${sid}:${token}`).toString("base64");
+
+  await Promise.allSettled(toList.map(async (to) => {
+    try {
+      const params = new URLSearchParams({ To: to, Body: body });
+      if (service) params.set("MessagingServiceSid", service);
+      else params.set("From", from);
+      const res = await fetch(`https://api.twilio.com/2010-04-01/Accounts/${sid}/Messages.json`, {
+        method: "POST",
+        headers: { Authorization: auth, "Content-Type": "application/x-www-form-urlencoded" },
+        body: params.toString()
+      });
+      if (!res.ok) {
+        console.error("Twilio SMS failed:", res.status, await res.text());
+      }
+    } catch (err) {
+      console.error("Escalation text failed (non-fatal):", err.message);
+    }
+  }));
+}
+
 async function logEscalation({ channel, question, customerName, customerContact }) {
   const supabaseUrl = process.env.SUPABASE_URL;
   const supabaseKey = process.env.SUPABASE_SERVICE_KEY;
@@ -139,6 +222,7 @@ async function logEscalation({ channel, question, customerName, customerContact 
 async function handleEscalation(details) {
   await Promise.allSettled([
     sendEscalationEmail(details),
+    sendEscalationSms(details),
     logEscalation(details)
   ]);
 }
@@ -302,6 +386,6 @@ async function logPromoOptin({ channel, contactMethod, contactType, customerName
 }
 
 module.exports = {
-  sendEscalationEmail, logEscalation, handleEscalation, logMarketingInfo, logPromoOptin,
+  sendEscalationEmail, sendEscalationSms, buildSmsBody, toE164, logEscalation, handleEscalation, logMarketingInfo, logPromoOptin,
   findContacts, normalizeSpokenDigits, contactKey, detectNewLead, detectLeadInTranscript
 };
