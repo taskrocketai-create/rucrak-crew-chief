@@ -9,7 +9,7 @@
 const test = require("node:test");
 const assert = require("node:assert/strict");
 
-const { handleEscalation, buildSmsBody, toE164 } = require("../api/_notify.js");
+const { handleEscalation, buildSmsBody, toE164, isLeadEscalation } = require("../api/_notify.js");
 const chatHandler = require("../api/chat.js");
 const escalationHandler = require("../api/log-escalation.js");
 
@@ -209,18 +209,83 @@ test("voice flag_escalation tool call texts Jason", async () => {
   });
 });
 
-test("text chat: a customer leaving a phone number texts Jason (lead backstop)", async () => {
+test("text chat: a lead the backstop catches (Daryl didn't escalate) does NOT text Jason", async () => {
   const texts = [];
-  await withEnvAndFetch(TWILIO_ENV, twilioMocks(texts), async () => {
+  const emails = [];
+  const base = twilioMocks(texts);
+  const fetchImpl = async (url, opts) => {
+    if (String(url).includes("api.resend.com")) { emails.push(JSON.parse(opts.body)); return { ok: true, status: 200, text: async () => "" }; }
+    return base(url, opts);
+  };
+  await withEnvAndFetch({ ...TWILIO_ENV, RESEND_API_KEY: "re_test", JASON_NOTIFY_EMAIL: "jason@example.com" }, fetchImpl, async () => {
     const { req, res } = makeReqRes({
       ip: "10.9.5.1",
       body: { messages: [{ role: "user", content: "call me about a bulk order, 434-547-9024" }] }
     });
     await chatHandler(req, res);
     await tick();
-    assert.equal(texts.length, 1);
-    assert.ok(texts[0].params.get("Body").includes("434-547-9024"));
+    assert.equal(emails.length, 1, "Jason still gets the email");
+    assert.ok(emails[0].text.includes("434-547-9024"));
+    assert.equal(texts.length, 0, "but no text -- Daryl wasn't unable to help");
   });
+});
+
+test("text chat: when Daryl can't help (model escalates), Jason is texted", async () => {
+  const texts = [];
+  const reply = 'I want to get you the right answer on that, passing it to Jason.\n@@ESCALATE@@{"question":"Does the GRUNT fit a 2012 Defender with a custom rear bumper?","customerName":"Sam","customerContact":"sam@example.com"}@@END@@';
+  await withEnvAndFetch(TWILIO_ENV, twilioMocks(texts, { anthropicReply: reply }), async () => {
+    const { req, res } = makeReqRes({
+      ip: "10.9.5.4",
+      body: { messages: [{ role: "user", content: "will it fit my Defender with a custom bumper?" }] }
+    });
+    await chatHandler(req, res);
+    await tick();
+    assert.equal(texts.length, 1);
+    assert.ok(texts[0].params.get("Body").includes("Defender"));
+    assert.ok(!res._json.text.includes("@@"), "marker stripped from the customer's view");
+  });
+});
+
+test("text chat: a model-escalated LEAD (marked with LEAD:) emails but does NOT text", async () => {
+  const texts = [];
+  const reply = 'Got it, passing you to Jason!\n@@ESCALATE@@{"question":"LEAD: wants a callback on bulk pricing, 2023 Bronco","customerName":"Dave","customerContact":"434-547-9024"}@@END@@';
+  await withEnvAndFetch(TWILIO_ENV, twilioMocks(texts, { anthropicReply: reply }), async () => {
+    const { req, res } = makeReqRes({
+      ip: "10.9.5.5",
+      body: { messages: [{ role: "user", content: "can someone call me about bulk pricing? 434-547-9024" }] }
+    });
+    await chatHandler(req, res);
+    await tick();
+    assert.equal(texts.length, 0);
+  });
+});
+
+test("voice: flag_escalation for a handled lead does NOT text; for a real problem it does", async () => {
+  const texts = [];
+  await withEnvAndFetch(TWILIO_ENV, twilioMocks(texts), async () => {
+    const lead = makeReqRes({
+      body: { message: { toolCallList: [{ id: "a", function: { arguments: { question: "LEAD: wants a quote on two GRUNTs", customerName: "Dave", customerContact: "434-547-9024" } } }] } }
+    });
+    await escalationHandler(lead.req, lead.res);
+    assert.equal(texts.length, 0);
+
+    const problem = makeReqRes({
+      body: { message: { toolCallList: [{ id: "b", function: { arguments: { question: "Received only a flagpole, missing the whole rack", customerName: "Edward", customerContact: "630-921-3779" } } }] } }
+    });
+    await escalationHandler(problem.req, problem.res);
+    assert.equal(texts.length, 1);
+    assert.ok(texts[0].params.get("Body").includes("flagpole"));
+  });
+});
+
+test("isLeadEscalation recognizes the LEAD marker only at the start", () => {
+  assert.equal(isLeadEscalation("LEAD: wants a callback"), true);
+  assert.equal(isLeadEscalation("  lead - wants a quote"), true);
+  assert.equal(isLeadEscalation("LEAD — customer shared contact info. What they said: hi"), true);
+  assert.equal(isLeadEscalation("Customer is a lead for... no wait, missing parts"), false);
+  assert.equal(isLeadEscalation("Leading cause of the issue is a missing bolt"), false);
+  assert.equal(isLeadEscalation(""), false);
+  assert.equal(isLeadEscalation(undefined), false);
 });
 
 test("text chat: a promo opt-in does NOT text Jason", async () => {

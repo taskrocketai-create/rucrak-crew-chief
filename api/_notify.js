@@ -109,8 +109,8 @@ async function sendEscalationEmail({ channel, question, customerName, customerCo
 }
 
 // --- Text message to Jason ------------------------------------------------
-// Escalations also text Jason so a customer waiting on him doesn't sit in a
-// shared inbox. Uses Twilio's REST API directly (no SDK). Entirely opt-in:
+// Escalations where Daryl couldn't help also text Jason so a customer waiting
+// on him doesn't sit in a shared inbox (leads Daryl handled are email-only). Uses Twilio's REST API directly (no SDK). Entirely opt-in:
 // does nothing unless ALL of these are set in Vercel:
 //   TWILIO_ACCOUNT_SID, TWILIO_AUTH_TOKEN
 //   TWILIO_FROM_NUMBER (E.164, e.g. +19195550100)  -- or TWILIO_MESSAGING_SERVICE_SID
@@ -154,7 +154,16 @@ async function smsFloodGuardTripped() {
   }
 }
 
+// Text only when Daryl genuinely couldn't help. A sales lead Daryl already
+// handled (customer just left contact info / wants a callback) is marked with
+// a leading "LEAD" in the escalation's question -- by the model per the prompt,
+// and by the code backstop for numbers it catches -- and goes by email only.
+function isLeadEscalation(question) {
+  return /^\s*LEAD\b/i.test(String(question || ""));
+}
+
 async function sendEscalationSms(details) {
+  if (isLeadEscalation(details && details.question)) return;
   const sid = process.env.TWILIO_ACCOUNT_SID;
   const token = process.env.TWILIO_AUTH_TOKEN;
   const from = process.env.TWILIO_FROM_NUMBER;
@@ -386,6 +395,6 @@ async function logPromoOptin({ channel, contactMethod, contactType, customerName
 }
 
 module.exports = {
-  sendEscalationEmail, sendEscalationSms, buildSmsBody, toE164, logEscalation, handleEscalation, logMarketingInfo, logPromoOptin,
+  sendEscalationEmail, sendEscalationSms, isLeadEscalation, buildSmsBody, toE164, logEscalation, handleEscalation, logMarketingInfo, logPromoOptin,
   findContacts, normalizeSpokenDigits, contactKey, detectNewLead, detectLeadInTranscript
 };

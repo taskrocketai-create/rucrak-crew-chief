@@ -123,7 +123,7 @@ Vapi invokes directly when the assistant decides to escalate.
 | `JASON_NOTIFY_EMAIL` | the real inbox that should receive these (Jason's actual email) |
 | `CREWCHIEF_FROM_EMAIL` | optional — defaults to `crewchief@send.rucrak.com` if unset, matching the domain actually verified above. If you verify a different domain, set this explicitly to match it — the code's default won't send successfully from an unverified domain. |
 
-**Text message alert (optional)** — escalations can also text Jason via Twilio. Does nothing unless every one of these is set (use `TWILIO_FROM_NUMBER` *or* `TWILIO_MESSAGING_SERVICE_SID`):
+**Text message alert (optional)** — escalations where Daryl couldn't help also text Jason via Twilio. Sales leads Daryl already handled (question starts with `LEAD`) are email-only. Does nothing unless every one of these is set (use `TWILIO_FROM_NUMBER` *or* `TWILIO_MESSAGING_SERVICE_SID`):
 
 | Key | Value |
 |---|---|
