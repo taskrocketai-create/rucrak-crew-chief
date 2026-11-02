@@ -127,9 +127,15 @@ module.exports = async (req, res) => {
     });
   }
 
+  // Fitment is no longer decided from a photo (see the FITMENT CHECK section
+  // in api/_prompt.js -- it's a stock-vs-non-stock wheel question now, not a
+  // measurement read off an image). If a photo still comes in through this
+  // endpoint, don't try to extract tire/wheel measurements from it -- just
+  // acknowledge what's in the photo if relevant and steer back to the real
+  // stock/non-stock question per current instructions.
   const promptText = (typeof note === "string" && note.trim())
     ? note.trim()
-    : "Analyze this photo for rucRak fitment per the FITMENT rules in your instructions. Give a clear, specific verdict.";
+    : "A customer sent this photo. rucRak's fitment process no longer reads measurements off photos -- don't attempt a tire-width/tire-to-hitch/wheel-offset read from it. If it's relevant to a fitment question, just note what you can plainly see, then ask (if you haven't already) whether the wheel/tire is still stock or aftermarket, per the FITMENT CHECK section in your instructions.";
 
   try {
     const anthropicResponse = await fetch("https://api.anthropic.com/v1/messages", {

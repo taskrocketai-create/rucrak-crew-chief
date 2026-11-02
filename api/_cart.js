@@ -142,18 +142,25 @@ async function addLineToCart(cartId, items) {
     throw new Error("Cart not found (likely an invalid/expired cart ID)");
   }
 
+  // includesQualifyingProduct still reports whether a main GRUNT/GUNNY
+  // product is in this batch -- that flag also drives the accessory-upsell
+  // question downstream (see add-to-cart-ack.js / index.html / embed.js),
+  // which has nothing to do with the discount and still needs to fire.
   const qualifies = includesQualifyingProduct(items);
   let checkoutUrl = data.cartLinesAdd.cart.checkoutUrl;
-  let discountApplied = false;
-  if (qualifies) {
-    try {
-      const code = await generateSessionDiscountCode();
-      checkoutUrl = embedDiscountInUrl(checkoutUrl, code);
-      discountApplied = true;
-    } catch (err) {
-      console.error("Discount generation failed during add-to-cart, cart-add itself still succeeded (non-fatal):", err.message);
-    }
-  }
+
+  // The $50 "Daryl discount" was removed per Jason's direction (Nov 2026
+  // call) -- rucRak doesn't want it offered anymore. discountApplied is now
+  // always false and the checkout URL is never touched with a discount
+  // code. The discount-generation plumbing itself (api/_discount.js, the
+  // Shopify Admin API wiring) is left in place, just unused -- if the
+  // discount ever comes back, restore the block that used to sit here:
+  //   if (qualifies) {
+  //     const code = await generateSessionDiscountCode();
+  //     checkoutUrl = embedDiscountInUrl(checkoutUrl, code);
+  //     discountApplied = true;
+  //   }
+  const discountApplied = false;
 
   return { checkoutUrl, discountApplied, includesQualifyingProduct: qualifies };
 }

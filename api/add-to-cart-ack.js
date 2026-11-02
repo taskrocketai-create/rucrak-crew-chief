@@ -138,12 +138,13 @@ async function handleOneCall(toolCall) {
     // remember to set. Real feedback: even after adding that flag, both
     // the discount and the accessory follow-up kept getting skipped, since
     // it still depended on the model reliably deciding to do something.
-    const { checkoutUrl, discountApplied, includesQualifyingProduct } = await addLineToCart(cartId, normalizedItems);
-    const discountNote = includesQualifyingProduct
-      ? (discountApplied
-          ? " A $50 discount has also been applied automatically -- it's already baked into the checkout link, so don't read out or mention any code, just tell them the discount is applied."
-          : " The discount specifically didn't apply this time (the item(s) themselves were still added fine) -- be honest that the discount part didn't go through if they ask, don't claim it's there.")
-      : "";
+    // The $50 "Daryl discount" was removed per Jason's direction (Nov 2026
+    // call) -- discountApplied from api/_cart.js is always false now, so
+    // there's nothing to say about a discount here anymore. If a customer
+    // brings it up on their own, that's a prompt-level instruction (see
+    // api/_prompt.js), not something this result text needs to handle.
+    const { checkoutUrl, includesQualifyingProduct } = await addLineToCart(cartId, normalizedItems);
+    const discountNote = "";
     // Real feedback: when the accessory question got mentioned BEFORE the
     // Continue Shopping direction in this result text, Daryl consistently
     // asked it first too, before ever telling the customer how to actually
