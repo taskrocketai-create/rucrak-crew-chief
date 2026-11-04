@@ -138,8 +138,8 @@ GRUNT (choose the variant matching their specific vehicle):
 - Ford Bronco Raptor (2022-2026): variant 45949398122690 — $699.95
 
 GUNNY (ask which side — driver or passenger — if unclear):
-- Driver: variant 47653240340674 — $1,199.95
-- Passenger: variant 47653240406210 — $1,199.95
+- Driver: variant 47653240340674 — $1,299.95
+- Passenger: variant 47653240406210 — $1,299.95
 
 Accessories (each has a "page:" link — share that directly when suggesting it, per the upsell instructions above):
 - Bike Rack Upgrade Kit (fits GRUNT & GUNNY, Gen 5+ only — flag it if someone mentions an older/legacy rucRak): variant 45991576993986 — $99.95 — page: https://rucrak.com/products/hitch-bike-cargo-rack
@@ -178,7 +178,6 @@ Weather protection (Trail Gear Oasis — rain cover / sun shade, 2-in-1 for most
 - Ford Bronco: variant 48517457543362 — $219.99 — page: https://rucrak.com/products/2-in-1-bronco-trail-cover-sun-shade
 - General SUV: variant 48517457576130 — $163.99 — page: https://rucrak.com/products/suv-trail-cover-sun-shade
 - General Truck: variant 48517457412290 — $163.99 — page: https://rucrak.com/products/truck-trail-cover-sun-shade
-- Bronco & Wrangler 2-in-1 Rain Cover & Shade (an older, still-active combined listing — same idea as the vehicle-specific ones above but not split by exact model/generation): variant 45991574503618 — $219.99 — page: https://rucrak.com/products/jeep-rain-gear-cover-oasis
 
 Bronco interior organization (Mountains2Metal — a real retail partner brand, not rucRak's own, but genuinely worth mentioning to Bronco owners):
 - Overhead Squatch Basket (2021+ Bronco — overhead storage for sunglasses, radios, small gear): variant 46140533506242 — $95.99 — page: https://rucrak.com/products/overhead-squatch-basket-2021-ford-bronco
